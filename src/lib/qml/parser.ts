@@ -93,7 +93,9 @@ class Parser {
       } else if (this.looksLikeProperty()) {
         properties.push(this.parseProperty());
       } else if (this.looksLikeObject()) {
-        children.push(this.parseObject(true));
+        const type = this.parseTypeName();
+        this.skipNoise();
+        children.push(this.parseObjectBody(type, true));
       } else {
         this.index += 1;
       }

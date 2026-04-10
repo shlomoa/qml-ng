@@ -6,6 +6,8 @@ QML types become visible Angular output.
 ## Newly Covered Types
 
 - `ScrollView` converts to a scrollable container and preserves its child content.
+- `QtObject` and inline `Component` wrappers are treated as transparent structural containers
+  so nested UI can still be reached.
 - `ShapePath` is preserved as a structural container so path primitives remain traversable.
 - `PathArc`, `PathLine`, `PathMove`, `PathSvg`, and `PathText` are recognized as
   non-visual path primitives and skipped conservatively instead of being reported as
