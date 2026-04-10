@@ -7,6 +7,7 @@ export type QmlValue =
 export interface QmlProperty {
   name: string;
   value: QmlValue;
+  embeddedObject?: QmlObjectNode;
 }
 
 export interface QmlObjectNode {

@@ -68,13 +68,13 @@ class Parser {
     this.skipNoise();
     this.skipTopLevelPreamble();
     this.skipNoise();
-    const root = this.parseObject(false);
+    const rootType = this.parseTypeName();
+    this.skipNoise();
+    const root = this.parseObjectBody(rootType, false);
     return { root };
   }
 
-  private parseObject(resolveSourcePath: boolean): QmlObjectNode {
-    const type = this.parseTypeName();
-    this.skipNoise();
+  private parseObjectBody(type: string, resolveSourcePath: boolean): QmlObjectNode {
     this.expect('lbrace');
 
     const properties: QmlProperty[] = [];
@@ -122,8 +122,7 @@ class Parser {
 
     const name = this.parseDottedName();
     this.expect('colon');
-    const value = this.parsePropertyValue();
-    return { name, value };
+    return this.parsePropertyValue(name);
   }
 
   private parseDottedName(): string {
@@ -156,21 +155,29 @@ class Parser {
     }
 
     this.expect('colon');
-    const value = this.parsePropertyValue();
-    return { name, value };
+    return this.parsePropertyValue(name);
   }
 
-  private parsePropertyValue(): QmlValue {
+  private parsePropertyValue(name: string): QmlProperty {
+    const inlineObject = this.tryParseInlineObject();
+    if (inlineObject) {
+      return {
+        name,
+        value: { kind: 'identifier', value: inlineObject.typeName },
+        embeddedObject: inlineObject
+      };
+    }
+
     const token = this.peek();
 
     if (token.kind === 'string') {
       this.index += 1;
-      return { kind: 'string', value: token.value };
+      return { name, value: { kind: 'string', value: token.value } };
     }
 
     if (token.kind === 'number') {
       this.index += 1;
-      return { kind: 'number', value: Number(token.value) };
+      return { name, value: { kind: 'number', value: Number(token.value) } };
     }
 
     const start = this.index;
@@ -197,15 +204,15 @@ class Parser {
 
     const text = parts.join('').trim();
     if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(text)) {
-      return { kind: 'identifier', value: text };
+      return { name, value: { kind: 'identifier', value: text } };
     }
 
     if (!text) {
       const fallback = this.tokens[start];
-      return { kind: 'expression', value: fallback?.value ?? '' };
+      return { name, value: { kind: 'expression', value: fallback?.value ?? '' } };
     }
 
-    return { kind: 'expression', value: text };
+    return { name, value: { kind: 'expression', value: text } };
   }
 
   private tokenText(token: Token): string {
@@ -264,9 +271,26 @@ class Parser {
 
   private parseComponentDeclaration(): QmlObjectNode {
     this.expect('identifier');
-    this.expect('identifier');
+    const type = this.parseTypeName();
     this.expect('colon');
-    return this.parseObject(true);
+    return this.parseObjectBody(type, true);
+  }
+
+  private tryParseInlineObject(): QmlObjectNode | undefined {
+    if (this.peek().kind !== 'identifier') {
+      return undefined;
+    }
+
+    const start = this.index;
+    const type = this.parseTypeName();
+    this.skipNoise();
+
+    if (!this.match('lbrace')) {
+      this.index = start;
+      return undefined;
+    }
+
+    return this.parseObjectBody(type, true);
   }
 
   private skipFunctionDeclaration(): void {
