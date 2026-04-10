@@ -1,10 +1,10 @@
 {
-  "$schema": "./node_modules/@angular-devkit/schematics/collection-schema.json",
+  "$schema": "http://json-schema.org/schema",
   "schematics": {
     "qml-component": {
-      "description": "Generate an Angular standalone component from a QML file.",
+      "description": "Generate an Angular standalone component from a QML file",
       "factory": "./dist/schematics/qml-component/index#qmlComponentSchematic",
-      "schema": "./dist/schematics/qml-component/schema.json"
+      "schema": "./src/schematics/qml-component/schema.json"
     }
   }
 }

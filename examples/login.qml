@@ -1,15 +1,16 @@
 Column {
-    spacing: 16
+  anchors.centerIn: parent
 
-    Text {
-        text: "Login"
-    }
+  Text {
+    text: user.name
+  }
 
-    TextField {
-        placeholderText: "Email"
-    }
+  TextField {
+    placeholderText: "Email"
+  }
 
-    Button {
-        text: "Submit"
-    }
+  Button {
+    text: "Submit"
+    onClicked: submit()
+  }
 }

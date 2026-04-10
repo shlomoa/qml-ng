@@ -1,84 +1,156 @@
-import { UiButtonNode, UiContainerNode, UiDocument, UiInputNode, UiNode, UiTextNode, UiUnsupportedNode } from '../schema/ui-schema';
+import { lowerBinding } from '../converter/expression-lowering';
+import { layoutToScss } from '../converter/layout-resolver';
+import { UiBinding, UiDocument, UiNode } from '../schema/ui-schema';
+import { collectMaterialImports } from './material-imports';
 
-export interface RenderedAngularArtifacts {
+export interface RenderedAngularComponent {
+  ts: string;
   html: string;
   scss: string;
-  imports: string[];
 }
 
-export function renderAngularMaterial(document: UiDocument): RenderedAngularArtifacts {
-  const imports = new Set<string>();
-  const html = renderNode(document.root, imports, 0);
-  const scss = [
-    ':host { display: block; }',
-    '.qml-column { display: flex; flex-direction: column; }',
-    '.qml-row { display: flex; flex-direction: row; align-items: center; }',
-    '.qml-stack { position: relative; }',
-    '.qml-unsupported { border: 1px dashed currentColor; padding: 0.75rem; }'
-  ].join('\n');
-
-  return {
-    html,
-    scss,
-    imports: Array.from(imports).sort()
-  };
+interface RenderContext {
+  computedDeclarations: string[];
+  signalDeclarations: string[];
+  dependencyNames: Set<string>;
+  exprCounter: number;
 }
 
-function renderNode(node: UiNode, imports: Set<string>, indent: number): string {
+function bindingLiteralOrExpr(binding: UiBinding | undefined, fieldPrefix: string, ctx: RenderContext): string {
+  if (!binding) return "''";
+
+  if (binding.kind === 'literal') {
+    return JSON.stringify(binding.value ?? '');
+  }
+
+  binding.dependencies.forEach(d => ctx.dependencyNames.add(d));
+  const lowered = lowerBinding(binding.expression ?? '');
+  const fieldName = `${fieldPrefix}Expr${++ctx.exprCounter}`;
+  ctx.computedDeclarations.push(`readonly ${fieldName} = computed(() => ${lowered.angularExpression});`);
+  return `${fieldName}()`;
+}
+
+function renderEvents(node: UiNode): string {
+  if (!node.events.length) return '';
+  return ' ' + node.events.map(e => `(${e.angularEvent})="${e.handler}"`).join(' ');
+}
+
+function renderNode(node: UiNode, ctx: RenderContext): string {
   switch (node.kind) {
-    case 'container':
-      return renderContainer(node, imports, indent);
-    case 'text':
-      return renderText(node, indent);
-    case 'input':
-      return renderInput(node, imports, indent);
-    case 'button':
-      return renderButton(node, imports, indent);
-    case 'unsupported':
-      return renderUnsupported(node, indent);
+    case 'container': {
+      const orientation = node.meta?.orientation === 'row' ? 'qml-row' : 'qml-column';
+      const content = node.children.map(child => renderNode(child, ctx)).join('\n');
+      return `<div class="${orientation}"${renderEvents(node)}>\n${content}\n</div>`;
+    }
+
+    case 'text': {
+      const textExpr = bindingLiteralOrExpr(node.text, 'text', ctx);
+      return `<span${renderEvents(node)}>{{ ${textExpr} }}</span>`;
+    }
+
+    case 'input': {
+      const placeholderExpr = bindingLiteralOrExpr(node.placeholder, 'placeholder', ctx);
+      return [
+        `<mat-form-field appearance="outline"${renderEvents(node)}>`,
+        `  <input matInput [placeholder]="${placeholderExpr}">`,
+        `</mat-form-field>`
+      ].join('\n');
+    }
+
+    case 'button': {
+      const textExpr = bindingLiteralOrExpr(node.text, 'buttonText', ctx);
+      return `<button mat-raised-button${renderEvents(node)}>{{ ${textExpr} }}</button>`;
+    }
+
+    case 'unknown':
     default:
-      return `${spaces(indent)}<!-- Unknown node -->`;
+      return `<div class="qml-unsupported">Unsupported node: ${node.name ?? 'unknown'}</div>`;
   }
 }
 
-function renderContainer(node: UiContainerNode, imports: Set<string>, indent: number): string {
-  const className = `qml-${node.layout}`;
-  const style = node.spacing !== undefined ? ` style="gap: ${node.spacing}px;"` : '';
-  const children = node.children.map((child) => renderNode(child, imports, indent + 2)).join('\n');
-  return `${spaces(indent)}<div class="${className}"${style}>\n${children}\n${spaces(indent)}</div>`;
+function collectLayoutScss(node: UiNode, level = 0): string[] {
+  const rules: string[] = [];
+  const selector = level === 0 ? ':host' : '';
+  const css = layoutToScss(node.layout);
+  if (selector && css) {
+    rules.push(`${selector} {\n${css}\n}`);
+  }
+  node.children.forEach(child => rules.push(...collectLayoutScss(child, level + 1)));
+  return rules;
 }
 
-function renderText(node: UiTextNode, indent: number): string {
-  const tag = node.role === 'title' ? 'h1' : 'span';
-  return `${spaces(indent)}<${tag}>${escapeHtml(node.text)}</${tag}>`;
-}
+export function renderAngularMaterial(doc: UiDocument, className: string): RenderedAngularComponent {
+  const ctx: RenderContext = {
+    computedDeclarations: [],
+    signalDeclarations: [],
+    dependencyNames: new Set<string>(),
+    exprCounter: 0
+  };
 
-function renderInput(node: UiInputNode, imports: Set<string>, indent: number): string {
-  imports.add('MatFormFieldModule');
-  imports.add('MatInputModule');
-  const label = node.label ? `${spaces(indent + 2)}<mat-label>${escapeHtml(node.label)}</mat-label>\n` : '';
-  const placeholder = node.placeholder ? ` placeholder="${escapeAttribute(node.placeholder)}"` : '';
-  return `${spaces(indent)}<mat-form-field appearance="outline">\n${label}${spaces(indent + 2)}<input matInput type="${node.inputType}"${placeholder} />\n${spaces(indent)}</mat-form-field>`;
-}
+  const html = renderNode(doc.root, ctx);
+  const materialImports = collectMaterialImports(doc.root);
+  const ngImports = [
+    'Component',
+    'computed',
+    ...(ctx.dependencyNames.size ? ['signal'] : [])
+  ];
 
-function renderButton(node: UiButtonNode, imports: Set<string>, indent: number): string {
-  imports.add('MatButtonModule');
-  const attr = node.variant === 'flat' ? 'mat-flat-button' : node.variant === 'stroked' ? 'mat-stroked-button' : 'mat-raised-button';
-  return `${spaces(indent)}<button ${attr}>${escapeHtml(node.text)}</button>`;
-}
+  for (const dep of [...ctx.dependencyNames].sort()) {
+    ctx.signalDeclarations.push(`readonly ${dep} = signal<any>(null);`);
+  }
 
-function renderUnsupported(node: UiUnsupportedNode, indent: number): string {
-  return `${spaces(indent)}<div class="qml-unsupported">TODO: Unsupported QML node ${escapeHtml(node.qmlType)} — ${escapeHtml(node.reason)}</div>`;
-}
+  const angularMaterialImportMap: Record<string, string> = {
+    MatButtonModule: '@angular/material/button',
+    MatFormFieldModule: '@angular/material/form-field',
+    MatInputModule: '@angular/material/input'
+  };
 
-function spaces(count: number): string {
-  return ' '.repeat(count);
-}
+  const groupedMaterialImports = materialImports
+    .map(name => `import { ${name} } from '${angularMaterialImportMap[name]}';`)
+    .join('\n');
 
-function escapeHtml(value: string): string {
-  return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
-}
+  const ts = [
+    `import { ${ngImports.join(', ')} } from '@angular/core';`,
+    groupedMaterialImports,
+    '',
+    '@Component({',
+    `  selector: 'app-${doc.name}',`,
+    '  standalone: true,',
+    `  imports: [${materialImports.join(', ')}],`,
+    `  templateUrl: './${doc.name}.component.html',`,
+    `  styleUrl: './${doc.name}.component.scss'`,
+    '})',
+    `export class ${className} {`,
+    ...ctx.signalDeclarations.map(s => `  ${s}`),
+    ...ctx.computedDeclarations.map(s => `  ${s}`),
+    '}',
+    ''
+  ].join('\n');
 
-function escapeAttribute(value: string): string {
-  return escapeHtml(value).replaceAll('"', '&quot;');
+  const scss = [
+    ':host {',
+    '  display: block;',
+    '}',
+    '',
+    '.qml-column {',
+    '  display: flex;',
+    '  flex-direction: column;',
+    '  gap: 16px;',
+    '}',
+    '',
+    '.qml-row {',
+    '  display: flex;',
+    '  flex-direction: row;',
+    '  gap: 16px;',
+    '}',
+    '',
+    '.qml-unsupported {',
+    '  padding: 8px;',
+    '  border: 1px dashed currentColor;',
+    '}',
+    '',
+    ...collectLayoutScss(doc.root)
+  ].join('\n');
+
+  return { ts, html, scss };
 }

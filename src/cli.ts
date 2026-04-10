@@ -1,32 +1,37 @@
-#!/usr/bin/env node
-import fs from 'node:fs';
-import path from 'node:path';
-import { convertQmlToAngularComponent } from './lib/converter/converter';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { renderAngularMaterial } from './lib/angular/material-renderer';
+import { qmlToUiDocument } from './lib/converter/qml-to-ui';
+import { parseQml } from './lib/qml/parser';
 
-const [, , qmlPathArg, nameArg = 'generated-view'] = process.argv;
+function pascalCase(name: string): string {
+  return name
+    .split(/[^A-Za-z0-9]+/)
+    .filter(Boolean)
+    .map(part => part[0].toUpperCase() + part.slice(1))
+    .join('');
+}
 
-if (!qmlPathArg) {
-  console.error('Usage: qml-ng <path-to-qml> [component-name]');
+const [, , inputFile, ...rest] = process.argv;
+
+if (!inputFile) {
+  console.error('Usage: qml-ng <input.qml> --name <component-name>');
   process.exit(1);
 }
 
-const qmlPath = path.resolve(process.cwd(), qmlPathArg);
-const qmlContent = fs.readFileSync(qmlPath, 'utf-8');
-const result = convertQmlToAngularComponent({
-  name: nameArg,
-  qmlContent
-});
+const nameIndex = rest.indexOf('--name');
+const rawName = nameIndex >= 0 ? rest[nameIndex + 1] : path.basename(inputFile, '.qml');
+const componentName = rawName || 'qml-component';
 
-console.log('Selector:', result.component.selector);
-console.log('Class:', result.component.className);
-console.log('\n=== HTML ===\n');
-console.log(result.component.html);
-console.log('\n=== SCSS ===\n');
-console.log(result.component.scss);
+const qml = fs.readFileSync(inputFile, 'utf-8');
+const document = qmlToUiDocument(componentName, parseQml(qml));
+const rendered = renderAngularMaterial(document, `${pascalCase(componentName)}Component`);
 
-if (result.diagnostics.length) {
-  console.log('\n=== Diagnostics ===\n');
-  for (const diagnostic of result.diagnostics) {
-    console.log(diagnostic);
-  }
-}
+console.log('----- TS -----');
+console.log(rendered.ts);
+console.log('----- HTML -----');
+console.log(rendered.html);
+console.log('----- SCSS -----');
+console.log(rendered.scss);
+console.log('----- DIAGNOSTICS -----');
+console.log(document.diagnostics.join('\n') || 'None');

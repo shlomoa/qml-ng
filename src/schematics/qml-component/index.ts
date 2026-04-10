@@ -1,53 +1,42 @@
-import { normalize, strings } from '@angular-devkit/core';
-import {
-  Rule,
-  SchematicContext,
-  Tree,
-  apply,
-  mergeWith,
-  move,
-  template,
-  url
-} from '@angular-devkit/schematics';
-import { convertQmlToAngularComponent } from '../../lib/converter/converter';
-import type { QmlComponentSchema } from './schema';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { Rule, SchematicContext, Tree } from '@angular-devkit/schematics';
+import { parseQml } from '../../lib/qml/parser';
+import { qmlToUiDocument } from '../../lib/converter/qml-to-ui';
+import { renderAngularMaterial } from '../../lib/angular/material-renderer';
 
-export function qmlComponentSchematic(options: QmlComponentSchema): Rule {
-  return (tree: Tree, context: SchematicContext) => {
-    const qmlPath = normalize(options.qml);
-    if (!tree.exists(qmlPath)) {
-      throw new Error(`QML file not found in workspace: ${options.qml}`);
+interface Options {
+  name: string;
+  qmlFile: string;
+  path?: string;
+}
+
+function pascalCase(name: string): string {
+  return name
+    .split(/[^A-Za-z0-9]+/)
+    .filter(Boolean)
+    .map(part => part[0].toUpperCase() + part.slice(1))
+    .join('');
+}
+
+export function qmlComponentSchematic(options: Options): Rule {
+  return (_tree: Tree, context: SchematicContext) => {
+    const qmlSource = fs.readFileSync(options.qmlFile, 'utf-8');
+    const document = qmlToUiDocument(options.name, parseQml(qmlSource));
+    const className = `${pascalCase(options.name)}Component`;
+    const rendered = renderAngularMaterial(document, className);
+
+    const outputDir = options.path ?? `src/app/${options.name}`;
+    const outTree = _tree;
+
+    outTree.create(path.posix.join(outputDir, `${options.name}.component.ts`), rendered.ts);
+    outTree.create(path.posix.join(outputDir, `${options.name}.component.html`), rendered.html);
+    outTree.create(path.posix.join(outputDir, `${options.name}.component.scss`), rendered.scss);
+
+    if (document.diagnostics.length) {
+      context.logger.warn(document.diagnostics.join('\n'));
     }
 
-    const qmlBuffer = tree.read(qmlPath);
-    if (!qmlBuffer) {
-      throw new Error(`Failed to read QML file: ${options.qml}`);
-    }
-
-    const result = convertQmlToAngularComponent({
-      name: options.name,
-      selectorPrefix: options.selectorPrefix,
-      qmlContent: qmlBuffer.toString('utf-8')
-    });
-
-    for (const diagnostic of result.diagnostics) {
-      context.logger.warn(diagnostic);
-    }
-
-    const targetDir = normalize(`${options.path ?? 'src/app'}/${strings.dasherize(options.name)}`);
-    const sourceTemplates = apply(url('./files'), [
-      template({
-        ...strings,
-        ...options,
-        className: result.component.className,
-        selector: result.component.selector,
-        html: result.component.html,
-        scss: result.component.scss,
-        materialImports: result.component.angularImports.join(', ')
-      }),
-      move(targetDir)
-    ]);
-
-    return mergeWith(sourceTemplates)(tree, context);
+    return outTree;
   };
 }

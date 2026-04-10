@@ -1,30 +1,26 @@
 {
-  "name": "@qml-ng/schematics",
-  "version": "0.1.0",
-  "description": "Starter schematics and converter skeleton for generating Angular Material components from QML.",
-  "license": "MIT",
-  "type": "commonjs",
+  "name": "qml-ng",
+  "version": "0.3.0",
+  "private": true,
+  "description": "QML to Angular Material converter starter",
+  "main": "dist/index.js",
   "bin": {
-    "qml-ng": "./dist/cli.js"
+    "qml-ng": "dist/cli.js"
   },
   "files": [
     "dist",
-    "collection.json",
-    "README.md"
+    "collection.json"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json && node ./scripts/copy-assets.mjs",
-    "clean": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\"",
-    "prepare": "npm run build",
-    "test": "node -e \"console.log('Add schematic tests with SchematicTestRunner')\""
+    "build": "tsc -p tsconfig.json",
+    "clean": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\""
   },
   "dependencies": {
-    "@angular-devkit/core": "^21.2.0",
-    "@angular-devkit/schematics": "^21.2.0",
-    "jsonc-parser": "^3.3.1"
+    "@angular-devkit/core": "^20.0.0",
+    "@angular-devkit/schematics": "^20.0.0"
   },
   "devDependencies": {
-    "typescript": "^5.9.3",
-    "@types/node": "^24.3.0"
+    "@types/node": "^22.0.0",
+    "typescript": "^5.8.0"
   }
 }
