@@ -1,0 +1,57 @@
+// prop: json-converted
+// prop: auto-generated
+
+import QmlProject
+
+Project {
+    mainFile: "FigmaVariantsContent/App.qml"
+    mainUiFile: "FigmaVariantsContent/ScreenDesign.ui.qml"
+    targetDirectory: "/opt/FigmaVariants"
+    enableCMakeGeneration: true
+    enablePythonGeneration: true
+    widgetApp: false
+    importPaths: [ "." ]
+
+    qdsVersion: "4.7"
+    qt6Project: true
+    qtForMCUs: false
+
+    multilanguageSupport: true
+    primaryLanguage: "en"
+    supportedLanguages: [ "en" ]
+
+    Environment {
+        QT_AUTO_SCREEN_SCALE_FACTOR: "1"
+        QT_ENABLE_HIGHDPI_SCALING: "0"
+        QT_LOGGING_RULES: "qt.qml.connections=false"
+        QT_QUICK_CONTROLS_CONF: "qtquickcontrols2.conf"
+    }
+
+    QmlFiles {
+        directory: "FigmaVariants"
+    }
+
+    QmlFiles {
+        directory: "FigmaVariantsContent"
+    }
+
+    ImageFiles {
+        directory: "FigmaVariantsContent"
+    }
+
+    Files {
+        filter: "*.conf"
+        files: [
+            "qtquickcontrols2.conf"
+        ]
+    }
+
+    Files {
+        directory: "."
+        filter: "qmldir"
+    }
+
+    Files {
+        filter: "*.ttf;*.otf"
+    }
+}

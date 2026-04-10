@@ -1,0 +1,93 @@
+/****************************************************************************
+**
+** Copyright (C) 2022 The Qt Company Ltd.
+** Contact: https://www.qt.io/licensing/
+**
+** This file is part of Qt Quick Studio Components.
+**
+** $QT_BEGIN_LICENSE:GPL$
+** Commercial License Usage
+** Licensees holding valid commercial Qt licenses may use this file in
+** accordance with the commercial license agreement provided with the
+** Software or, alternatively, in accordance with the terms contained in
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
+**
+** GNU General Public License Usage
+** Alternatively, this file may be used under the terms of the GNU
+** General Public License version 3 or (at your option) any later version
+** approved by the KDE Free Qt Foundation. The licenses are as published by
+** the Free Software Foundation and appearing in the file LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-3.0.html.
+**
+** $QT_END_LICENSE$
+**
+****************************************************************************/
+
+import QtQuick 2.8
+
+Item {
+    id: tapButton
+    width: 40
+    height: 40
+    state: "state_state_checkedYellow"
+
+    Rectangle {
+        id: tapButtonBackground
+        x: 0
+        y: 0
+        width: 40
+        height: 40
+        color: "#4dc0b33a"
+        border.color: "#c0b33a"
+        border.width: 1
+    }
+    states: [
+        State {
+            name: "state_state_checkedYellow"
+        },
+        State {
+            name: "state_state_normal"
+            extend: "state_state_checkedYellow"
+
+            PropertyChanges {
+                target: tapButtonBackground
+                color: "#2e2e2e"
+                border.color: "#767676"
+            }
+        },
+        State {
+            name: "state_state_checkedBlue"
+            extend: "state_state_checkedYellow"
+
+            PropertyChanges {
+                target: tapButtonBackground
+                color: "#4d33c2ff"
+                border.color: "#33c2ff"
+            }
+        },
+        State {
+            name: "state_state_checkedGreen"
+            extend: "state_state_checkedYellow"
+
+            PropertyChanges {
+                target: tapButtonBackground
+                color: "#4d33ff85"
+                border.color: "#33ff85"
+            }
+        },
+        State {
+            name: "state_state_checkedRed"
+            extend: "state_state_checkedYellow"
+
+            PropertyChanges {
+                target: tapButtonBackground
+                color: "#4dc03a4d"
+                border.color: "#c03a4d"
+            }
+        }
+    ]
+}

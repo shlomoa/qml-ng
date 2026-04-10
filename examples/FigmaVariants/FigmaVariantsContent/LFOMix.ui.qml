@@ -1,0 +1,129 @@
+/****************************************************************************
+**
+** Copyright (C) 2022 The Qt Company Ltd.
+** Contact: https://www.qt.io/licensing/
+**
+** This file is part of Qt Quick Studio Components.
+**
+** $QT_BEGIN_LICENSE:GPL$
+** Commercial License Usage
+** Licensees holding valid commercial Qt licenses may use this file in
+** accordance with the commercial license agreement provided with the
+** Software or, alternatively, in accordance with the terms contained in
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
+**
+** GNU General Public License Usage
+** Alternatively, this file may be used under the terms of the GNU
+** General Public License version 3 or (at your option) any later version
+** approved by the KDE Free Qt Foundation. The licenses are as published by
+** the Free Software Foundation and appearing in the file LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-3.0.html.
+**
+** $QT_END_LICENSE$
+**
+****************************************************************************/
+
+import QtQuick 2.8
+
+Item {
+    id: lFOMix
+    width: 604
+    height: 392
+
+    ViewPanel {
+        id: viewPanel
+        x: 0
+        y: 0
+        width: 604
+        height: 392
+        state: "state_state_normal"
+    }
+
+    TabButton {
+        id: tabButton
+        x: 5
+        y: 5
+        width: 76
+        height: 22
+        tabButtonLabelText: "LFO MIX 1"
+        state: "state_state_checked"
+    }
+
+    TabButton {
+        id: tabButton1
+        x: 86
+        y: 5
+        width: 76
+        height: 22
+        tabButtonLabelText: "LFO MIX 2"
+        state: "state_state_normal"
+    }
+
+    Slider {
+        id: slider
+        x: 265
+        y: 134
+        width: 65
+        height: 149
+        sliderLabelText: "MIX"
+        state: "state_state_normal"
+    }
+
+    MiniButton {
+        id: miniButton
+        x: 3
+        y: 348
+        width: 42
+        height: 42
+        state: "state_state_checked"
+    }
+
+    MiniButton {
+        id: miniButton1
+        x: 47
+        y: 348
+        width: 42
+        height: 42
+        state: "state_state_normal"
+    }
+
+    MiniButton {
+        id: miniButton2
+        x: 91
+        y: 348
+        width: 42
+        height: 42
+        state: "state_state_normal"
+    }
+
+    PanelLabel {
+        id: panelLabel
+        x: 19
+        y: 57
+        width: 390
+        height: 34
+        panelLabelNumberText: "02"
+        panelLabelTextText: "LFO MIXER"
+        state: "state_state_normal"
+    }
+
+    SelectorDialCombined {
+        id: selectorDialCombined
+        x: 0
+        y: 95
+        width: 235
+        height: 179
+    }
+
+    SelectorDialCombined {
+        id: selectorDialCombined1
+        x: 360
+        y: 95
+        width: 235
+        height: 179
+    }
+}

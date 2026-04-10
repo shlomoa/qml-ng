@@ -1,6 +1,6 @@
 # qml-ng Phase 3 Starter
 
-A starter repository for converting a subset of QML into Angular standalone components using Angular Material.
+A starter repository for converting a subset of [QML] into Angular standalone components using Angular Material.
 
 ## What is included
 
@@ -16,7 +16,7 @@ A starter repository for converting a subset of QML into Angular standalone comp
 - Angular schematic collection with `qml-component`
 - simple CLI for local experimentation
 
-## Supported QML subset
+## Supported [QML] subset
 
 - `Column`
 - `Row`
@@ -53,3 +53,5 @@ QML
 → Angular Material renderer
 → schematic output
 ```
+
+[QML]: https://doc.qt.io/qt-6/qmlreference.html
