@@ -44,6 +44,7 @@ function renderBoundAttribute(name: string, expression: string): string {
 
 function containerClassName(node: UiNode): string {
   if (node.meta?.role === 'window') return 'qml-window';
+  if (node.meta?.role === 'structural') return 'qml-structural';
   if (node.meta?.role === 'group') return 'qml-group';
   if (node.meta?.role === 'scroll-view') return 'qml-scroll-view';
   if (node.meta?.role === 'shape-path') return 'qml-shape-path';
@@ -187,6 +188,10 @@ export function renderAngularMaterial(doc: UiDocument, className: string): Rende
     '',
     '.qml-window {',
     '  display: block;',
+    '}',
+    '',
+    '.qml-structural {',
+    '  display: contents;',
     '}',
     '',
     '.qml-group {',

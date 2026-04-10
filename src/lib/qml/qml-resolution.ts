@@ -13,6 +13,11 @@ function walkObjectTree(node: QmlObjectNode, visit: (node: QmlObjectNode) => voi
   for (const child of node.children) {
     walkObjectTree(child, visit);
   }
+  for (const property of node.properties) {
+    if (property.embeddedObject) {
+      walkObjectTree(property.embeddedObject, visit);
+    }
+  }
 }
 
 export function collectResolvedQmlDependencies(

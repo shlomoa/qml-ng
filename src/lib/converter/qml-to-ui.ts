@@ -16,6 +16,13 @@ function propertyText(properties: QmlProperty[], name: string): string | undefin
   return value.value;
 }
 
+function collectChildObjects(node: QmlObjectNode): QmlObjectNode[] {
+  return [
+    ...node.children,
+    ...node.properties.flatMap(property => property.embeddedObject ? [property.embeddedObject] : [])
+  ];
+}
+
 function children(nodes: QmlObjectNode[], diagnostics: string[]): UiNode[] {
   return nodes.map(node => qmlNodeToUi(node, diagnostics));
 }
@@ -41,13 +48,15 @@ export function qmlNodeToUi(node: QmlObjectNode, diagnostics: string[]): UiNode 
 
   switch (node.typeName) {
     case 'Window':
+    case 'QtObject':
+    case 'Component':
       return {
         kind: 'container',
-        name: 'Window',
+        name: node.typeName,
         layout,
         events,
-        children: children(node.children, diagnostics),
-        meta: { role: 'window' }
+        children: children(collectChildObjects(node), diagnostics),
+        meta: { role: node.typeName === 'Window' ? 'window' : 'structural' }
       };
 
     case 'Item':
@@ -57,7 +66,7 @@ export function qmlNodeToUi(node: QmlObjectNode, diagnostics: string[]): UiNode 
         name: node.typeName,
         layout,
         events,
-        children: children(node.children, diagnostics),
+        children: children(collectChildObjects(node), diagnostics),
         meta: { role: 'group' }
       };
 
@@ -68,7 +77,7 @@ export function qmlNodeToUi(node: QmlObjectNode, diagnostics: string[]): UiNode 
         name: node.typeName,
         layout,
         events,
-        children: children(node.children, diagnostics),
+        children: children(collectChildObjects(node), diagnostics),
         meta: { orientation: 'column', layoutKind: node.typeName === 'ColumnLayout' ? 'column-layout' : 'column' }
       };
 
@@ -79,7 +88,7 @@ export function qmlNodeToUi(node: QmlObjectNode, diagnostics: string[]): UiNode 
         name: node.typeName,
         layout,
         events,
-        children: children(node.children, diagnostics),
+        children: children(collectChildObjects(node), diagnostics),
         meta: { orientation: 'row', layoutKind: node.typeName === 'RowLayout' ? 'row-layout' : 'row' }
       };
 
@@ -89,7 +98,7 @@ export function qmlNodeToUi(node: QmlObjectNode, diagnostics: string[]): UiNode 
         name: 'StackLayout',
         layout,
         events,
-        children: children(node.children, diagnostics),
+        children: children(collectChildObjects(node), diagnostics),
         meta: { layoutKind: 'stack' }
       };
 
@@ -99,7 +108,7 @@ export function qmlNodeToUi(node: QmlObjectNode, diagnostics: string[]): UiNode 
         name: 'GridLayout',
         layout,
         events,
-        children: children(node.children, diagnostics),
+        children: children(collectChildObjects(node), diagnostics),
         meta: { layoutKind: 'grid' }
       };
 
@@ -109,7 +118,7 @@ export function qmlNodeToUi(node: QmlObjectNode, diagnostics: string[]): UiNode 
         name: 'FlexboxLayout',
         layout,
         events,
-        children: children(node.children, diagnostics),
+        children: children(collectChildObjects(node), diagnostics),
         meta: { layoutKind: 'flexbox' }
       };
 
@@ -119,7 +128,7 @@ export function qmlNodeToUi(node: QmlObjectNode, diagnostics: string[]): UiNode 
         name: 'ScrollView',
         layout,
         events,
-        children: children(node.children, diagnostics),
+        children: children(collectChildObjects(node), diagnostics),
         meta: { role: 'scroll-view' }
       };
 
@@ -129,7 +138,7 @@ export function qmlNodeToUi(node: QmlObjectNode, diagnostics: string[]): UiNode 
         name: 'ShapePath',
         layout,
         events,
-        children: children(node.children, diagnostics),
+        children: children(collectChildObjects(node), diagnostics),
         meta: { role: 'shape-path' }
       };
 
@@ -202,7 +211,7 @@ export function qmlNodeToUi(node: QmlObjectNode, diagnostics: string[]): UiNode 
         name: node.typeName,
         layout,
         events,
-        children: children(node.children, diagnostics),
+        children: children(collectChildObjects(node), diagnostics),
         meta: { unsupported: true }
       };
   }
