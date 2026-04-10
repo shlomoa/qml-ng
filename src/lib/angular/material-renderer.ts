@@ -94,7 +94,7 @@ function renderNode(node: UiNode, ctx: RenderContext): string {
 
     case 'unknown':
     default:
-      return `<div class="qml-unsupported">Unsupported node: ${node.name ?? 'unknown'}</div>`;
+      return `<!-- TODO: Unsupported QML type "${node.name ?? 'unknown'}" - manual implementation required -->\n<div class="qml-unsupported">Unsupported node: ${node.name ?? 'unknown'}</div>`;
   }
 }
 
@@ -119,11 +119,17 @@ export function renderAngularMaterial(doc: UiDocument, className: string): Rende
 
   const html = renderNode(doc.root, ctx);
   const materialImports = collectMaterialImports(doc.root);
-  const ngImports = [
-    'Component',
-    'computed',
-    ...(ctx.dependencyNames.size ? ['signal'] : [])
-  ];
+
+  // Ensure deterministic ordering of Angular core imports
+  const ngImports: string[] = ['Component'];
+  if (ctx.computedDeclarations.length > 0) {
+    ngImports.push('computed');
+  }
+  if (ctx.dependencyNames.size > 0) {
+    ngImports.push('signal');
+  }
+  // Sort to ensure deterministic output
+  ngImports.sort();
 
   for (const dep of [...ctx.dependencyNames].sort()) {
     ctx.signalDeclarations.push(`readonly ${dep} = signal<any>(null);`);

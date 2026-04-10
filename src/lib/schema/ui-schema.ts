@@ -29,8 +29,20 @@ export interface UiNode {
   meta?: Record<string, unknown>;
 }
 
+export type DiagnosticSeverity = 'error' | 'warning' | 'info';
+
+export interface UiDiagnostic {
+  severity: DiagnosticSeverity;
+  message: string;
+  file?: string;
+  line?: number;
+  column?: number;
+  /** Original source position (character offset) */
+  position?: number;
+}
+
 export interface UiDocument {
   name: string;
   root: UiNode;
-  diagnostics: string[];
+  diagnostics: UiDiagnostic[];
 }

@@ -4,6 +4,7 @@ import { Rule, SchematicContext, Tree } from '@angular-devkit/schematics';
 import { parseQml } from '../../lib/qml/parser';
 import { qmlToUiDocument } from '../../lib/converter/qml-to-ui';
 import { renderAngularMaterial } from '../../lib/angular/material-renderer';
+import { formatDiagnostic } from '../../lib/diagnostics/formatter';
 
 interface Options {
   name: string;
@@ -22,7 +23,7 @@ function pascalCase(name: string): string {
 export function qmlComponentSchematic(options: Options): Rule {
   return (_tree: Tree, context: SchematicContext) => {
     const qmlSource = fs.readFileSync(options.qmlFile, 'utf-8');
-    const document = qmlToUiDocument(options.name, parseQml(qmlSource));
+    const document = qmlToUiDocument(options.name, parseQml(qmlSource), options.qmlFile);
     const className = `${pascalCase(options.name)}Component`;
     const rendered = renderAngularMaterial(document, className);
 
@@ -33,9 +34,17 @@ export function qmlComponentSchematic(options: Options): Rule {
     outTree.create(path.posix.join(outputDir, `${options.name}.component.html`), rendered.html);
     outTree.create(path.posix.join(outputDir, `${options.name}.component.scss`), rendered.scss);
 
-    if (document.diagnostics.length) {
-      context.logger.warn(document.diagnostics.join('\n'));
-    }
+    // Log diagnostics with proper severity
+    document.diagnostics.forEach(diagnostic => {
+      const message = formatDiagnostic(diagnostic);
+      if (diagnostic.severity === 'error') {
+        context.logger.error(message);
+      } else if (diagnostic.severity === 'warning') {
+        context.logger.warn(message);
+      } else {
+        context.logger.info(message);
+      }
+    });
 
     return outTree;
   };
