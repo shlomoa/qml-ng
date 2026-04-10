@@ -216,10 +216,7 @@ export function qmlNodeToUi(node: QmlObjectNode, diagnostics: UiDiagnostic[]): U
         severity: 'warning',
         category: 'semantic',
         message: `Unsupported QML type: ${node.typeName}`,
-        file: undefined,
-        line: undefined,
-        column: undefined,
-        position: undefined
+        location: node.location
       });
       return {
         kind: 'unknown',
