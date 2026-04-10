@@ -21,13 +21,17 @@ The parser supports the QML subset used by this starter:
 
 - top-level `import` preamble lines before the root object; these are consumed and ignored by
   the AST because they are part of file setup, not the UI tree
-- object declarations like `Button { ... }`
+- qualified object declarations like `T.Button { ... }` and `M.ListModel { ... }`
 - nested child objects
 - properties like `text: "Save"`
 - dotted property names like `anchors.fill: parent`
 - handlers like `onClicked: submit()`
 - typed property declarations like `property alias foo: bar`, `property bool open: false`,
   `readonly property int width: 1920`, and `default property alias item: stack.children`
+- multiline property expressions with balanced parentheses, brackets, and braces
+- `function` and `signal` declarations, which are skipped conservatively rather than modeled
+- resolved component source paths for child objects when the parser can map a type name to a
+  project-local `.qml` or `.ui.qml` file
 
 ## Property value strategy
 Property values are captured in a lightweight structured way:

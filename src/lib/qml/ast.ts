@@ -14,6 +14,7 @@ export interface QmlObjectNode {
   typeName: string;
   properties: QmlProperty[];
   children: QmlObjectNode[];
+  resolvedSourcePath?: string;
 }
 
 export interface QmlDocument {
