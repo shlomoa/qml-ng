@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/schema",
+  "$id": "QmlComponentSchema",
+  "title": "QML component schematic options",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Component name."
+    },
+    "path": {
+      "type": "string",
+      "description": "Destination path inside the Angular workspace.",
+      "default": "src/app"
+    },
+    "qml": {
+      "type": "string",
+      "description": "Path to the source QML file."
+    },
+    "selectorPrefix": {
+      "type": "string",
+      "description": "Component selector prefix.",
+      "default": "app"
+    }
+  },
+  "required": ["name", "qml"]
+}

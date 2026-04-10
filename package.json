@@ -1,0 +1,30 @@
+{
+  "name": "@qml-ng/schematics",
+  "version": "0.1.0",
+  "description": "Starter schematics and converter skeleton for generating Angular Material components from QML.",
+  "license": "MIT",
+  "type": "commonjs",
+  "bin": {
+    "qml-ng": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "collection.json",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node ./scripts/copy-assets.mjs",
+    "clean": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\"",
+    "prepare": "npm run build",
+    "test": "node -e \"console.log('Add schematic tests with SchematicTestRunner')\""
+  },
+  "dependencies": {
+    "@angular-devkit/core": "^21.2.0",
+    "@angular-devkit/schematics": "^21.2.0",
+    "jsonc-parser": "^3.3.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "@types/node": "^24.3.0"
+  }
+}
