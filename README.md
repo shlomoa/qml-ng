@@ -26,6 +26,17 @@ The repository now includes three kinds of examples:
 
 These larger examples are important reference fixtures, not a claim that the converter already supports their full feature set. They act as a roadmap corpus for parser, layout, renderer, and testing work.
 
+### Corpus scale
+
+The current `examples/` snapshot is large enough to shape the roadmap directly:
+
+- about 298 QML or `.ui.qml` files
+- about 130 distinct object types and 40 distinct import forms
+- heavy use of `property alias`, states, `PropertyChanges`, `Timeline` and `Keyframe`, `Loader`, and `StackLayout`
+- supporting design assets such as PNGs, JPGs, fonts, and fragment shaders
+
+In practice, this means the examples are no longer just “nice to have” fixtures. They are a realistic stress corpus for parser coverage, semantic lowering, rendering contracts, bundle resolution, diagnostics, and performance.
+
 ## Supported [QML] subset
 
 The current implementation is intentionally small:
@@ -42,14 +53,18 @@ The current implementation is intentionally small:
   - `anchors.centerIn`
   - handlers like `onClicked`
 
+Anything beyond that starter subset should currently be treated as unsupported or partially supported unless it is explicitly implemented in code and validated by tests.
+
 The new example corpus shows the next wave of features the project will need to reason about, including:
 
 - primitives like `Item`, `Rectangle`, `Image`, and `CheckBox`
 - custom reusable components spread across multiple files
 - `QtQuick.Layouts` and `StackLayout`
 - property aliases and richer binding patterns
+- expression-heavy properties such as `implicitWidth`, `implicitHeight`, `Math.max(...)`, logical operators, and `when:` conditions
 - states, `PropertyChanges`, and timeline/keyframe constructs
 - graphics and effects such as `SvgPathItem`, `Shape`, `ShaderEffect`, and `FastBlur`
+- asset-backed controls, design-system-like component bundles, and Qt Design Studio project layouts
 
 ## Typical flow
 
@@ -58,6 +73,11 @@ node dist/cli.js examples/login.qml --name login-card
 ```
 
 This prints generated component files to stdout for the small supported subset. The larger example folders are better treated as regression fixtures and roadmap inputs than as current smoke tests.
+
+For day-to-day validation:
+
+- use `examples/login.qml` for a fast smoke test
+- use curated files from `examples/FigmaVariants` and `examples/WebinarDemo` for regression, diagnostics, and feature-planning work
 
 ## Main architecture
 

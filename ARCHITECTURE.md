@@ -14,6 +14,16 @@ The design goal is not pixel-perfect Qt reproduction. The design goal is semanti
 
 The repository now also carries a much larger example corpus under [`examples/FigmaVariants`](./examples/FigmaVariants) and [`examples/WebinarDemo`](./examples/WebinarDemo). Those projects introduce hundreds of QML files and a much wider set of building blocks, including custom controls, `QtQuick.Layouts`, `QtQuick.Templates`, state machines, timeline/keyframe constructs, graphics primitives, effects, and multi-file component bundles. They should be treated as architectural pressure tests and regression fixtures rather than as a statement of already-supported output.
 
+At the current snapshot, the example corpus is already large enough to act as a design constraint:
+
+- about 298 QML or `.ui.qml` files
+- about 130 object types and 40 import forms
+- hundreds of `property alias` declarations and typed properties
+- substantial use of `Loader`, `StackLayout`, states, `PropertyChanges`, `Timeline`, and `Keyframe`
+- supporting design assets such as images, fonts, and shader fragments
+
+That scale changes the architecture conversation. The system is no longer only about converting a tiny hand-written subset; it also needs a credible strategy for diagnostics, bundle resolution, unsupported feature handling, and regression testing against real project-shaped inputs.
+
 That leads to a layered compiler architecture:
 
 ```text
@@ -51,6 +61,12 @@ Introduced:
 
 The architecture is deliberately split into four concerns.
 
+The larger example corpus also exposes cross-cutting concerns around:
+
+- file graph resolution across many reusable QML components
+- asset resolution for images, fonts, and shader-backed visuals
+- diagnostics that stay actionable when many unsupported constructs appear in one bundle
+
 ### 3.1 Parsing
 Parsing turns text into a structured QML AST.
 
@@ -81,7 +97,7 @@ Responsibilities:
 - map QML handlers into Angular template event bindings
 - map selected anchor semantics into CSS/flex behavior
 
-The example corpus adds direct pressure on this layer because it leans on property aliases, stateful variants, timeline data, drag interactions, and component-to-component bindings that do not fit comfortably in the current string-heuristic lowering model.
+The example corpus adds direct pressure on this layer because it leans on property aliases, typed properties, stateful variants, timeline data, drag interactions, `when:` guards, `Math.max(...)`, logical expressions, and component-to-component bindings that do not fit comfortably in the current string-heuristic lowering model.
 
 ### 3.4 Rendering
 Rendering generates Angular source files.
@@ -93,7 +109,7 @@ Responsibilities:
 - SCSS layout rules
 - placeholder diagnostics for unsupported features
 
-The renderer is still Angular Material-first, but the examples show that longer-term rendering will need a more formal contract for non-Material primitives, graphics-heavy widgets, bundle-level composition, and explicit unsupported markers when fidelity would otherwise be misleading.
+The renderer is still Angular Material-first, but the examples show that longer-term rendering will need a more formal contract for non-Material primitives, image-backed and graphics-heavy widgets, bundle-level composition, asset references, and explicit unsupported markers when fidelity would otherwise be misleading.
 
 ## 4. Parser Architecture
 
@@ -295,6 +311,22 @@ Examples:
 
 This keeps generated components smaller and clearer.
 
+The larger examples also make clear that a Material import registry is not enough by itself. Production rendering will need a broader component mapping registry that can:
+
+- map supported controls to Angular Material or plain Angular patterns
+- route unsupported graphics-heavy controls to explicit placeholders or diagnostics
+- keep asset and style dependencies visible rather than silently dropping them
+
+## 9.1 Example corpus as test and roadmap input
+
+The example folders should play different roles in the architecture:
+
+- `examples/login.qml` stays the fast smoke fixture for the currently supported subset
+- curated files from `examples/FigmaVariants` and `examples/WebinarDemo` should be used as parser, lowering, renderer, and diagnostics fixtures
+- broader directory-level runs over those folders should inform schematic integration, performance work, and migration planning
+
+Treating the corpus this way helps keep the implementation honest without pretending that all 298 files are already convertible.
+
 ## 10. Repository layout
 
 ```text
@@ -341,5 +373,6 @@ The strongest next step would be:
 - more events
 - more layout constraints
 - component extraction and template splitting
+- bundle-aware file graph and asset handling
 - richer Material mapping
 - example-driven golden tests over the larger sample corpus
