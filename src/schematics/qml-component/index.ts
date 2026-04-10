@@ -1,14 +1,15 @@
-import * as fs from 'node:fs';
-import * as path from 'node:path';
 import { Rule, SchematicContext, Tree } from '@angular-devkit/schematics';
 import { parseQml } from '../../lib/qml/parser';
 import { qmlToUiDocument } from '../../lib/converter/qml-to-ui';
 import { renderAngularMaterial } from '../../lib/angular/material-renderer';
+import { FileSystemAdapter } from '../../lib/workspace/path-adapter';
+import { WorkspaceFactory, WorkspaceLocation } from '../../lib/workspace/workspace-path';
 
 interface Options {
   name: string;
   qmlFile: string;
   path?: string;
+  project?: string;
 }
 
 function pascalCase(name: string): string {
@@ -21,17 +22,38 @@ function pascalCase(name: string): string {
 
 export function qmlComponentSchematic(options: Options): Rule {
   return (_tree: Tree, context: SchematicContext) => {
-    const qmlSource = fs.readFileSync(options.qmlFile, 'utf-8');
+    // Use FileSystemAdapter for boundary I/O
+    const fsAdapter = new FileSystemAdapter();
+    const qmlSource = fsAdapter.readQmlFile(options.qmlFile);
+
     const document = qmlToUiDocument(options.name, parseQml(qmlSource));
     const className = `${pascalCase(options.name)}Component`;
     const rendered = renderAngularMaterial(document, className);
 
-    const outputDir = options.path ?? `src/app/${options.name}`;
-    const outTree = _tree;
+    // Use workspace-aware path resolution
+    let componentFiles;
+    if (options.path) {
+      // If explicit path provided, use it directly (backward compatibility)
+      const basePath = options.path;
+      componentFiles = {
+        typescript: `${basePath}/${options.name}.component.ts`,
+        template: `${basePath}/${options.name}.component.html`,
+        style: `${basePath}/${options.name}.component.scss`,
+      };
+    } else {
+      // Use workspace-aware resolution
+      const resolver = WorkspaceFactory.createSimpleResolver();
+      const location: WorkspaceLocation = {
+        project: options.project ?? 'app',
+        componentName: options.name,
+      };
+      componentFiles = resolver.resolveComponentFiles(location);
+    }
 
-    outTree.create(path.posix.join(outputDir, `${options.name}.component.ts`), rendered.ts);
-    outTree.create(path.posix.join(outputDir, `${options.name}.component.html`), rendered.html);
-    outTree.create(path.posix.join(outputDir, `${options.name}.component.scss`), rendered.scss);
+    const outTree = _tree;
+    outTree.create(componentFiles.typescript, rendered.ts);
+    outTree.create(componentFiles.template, rendered.html);
+    outTree.create(componentFiles.style, rendered.scss);
 
     if (document.diagnostics.length) {
       context.logger.warn(document.diagnostics.join('\n'));

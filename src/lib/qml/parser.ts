@@ -1,59 +1,21 @@
-import * as fs from 'node:fs';
-import * as path from 'node:path';
 import { QmlDocument, QmlObjectNode, QmlProperty, QmlValue } from './ast';
 import { Token, tokenizeQml } from './tokenizer';
+import { QmlFileAdapter } from '../workspace/path-adapter';
 
 export interface QmlParseOptions {
   filePath?: string;
   searchRoots?: string[];
 }
 
-function candidatePaths(typeName: string): string[] {
-  return [`${typeName}.qml`, `${typeName}.ui.qml`];
-}
-
-function collectFiles(rootDir: string, names: Set<string>, output: string[]): void {
-  for (const entry of fs.readdirSync(rootDir, { withFileTypes: true })) {
-    const fullPath = path.join(rootDir, entry.name);
-    if (entry.isDirectory()) {
-      collectFiles(fullPath, names, output);
-      continue;
-    }
-
-    if (entry.isFile() && names.has(entry.name)) {
-      output.push(fullPath);
-    }
-  }
-}
-
+/**
+ * Resolve a QML type to a source file path using workspace-aware logic
+ */
 function resolveQmlObjectSourcePath(typeName: string, options: QmlParseOptions = {}): string | undefined {
-  const names = candidatePaths(typeName);
-  const candidates: string[] = [];
-  const seen = new Set<string>();
-
-  const addCandidate = (candidate: string) => {
-    const normalized = path.normalize(candidate);
-    if (seen.has(normalized)) {
-      return;
-    }
-    if (fs.existsSync(normalized) && fs.statSync(normalized).isFile()) {
-      seen.add(normalized);
-      candidates.push(normalized);
-    }
-  };
-
-  if (options.filePath) {
-    const dir = path.dirname(options.filePath);
-    for (const name of names) {
-      addCandidate(path.join(dir, name));
-    }
-  }
-
-  for (const root of options.searchRoots ?? []) {
-    collectFiles(root, new Set(names), candidates);
-  }
-
-  return candidates.sort((left, right) => left.localeCompare(right))[0];
+  const adapter = new QmlFileAdapter();
+  return adapter.resolveQmlType(typeName, {
+    referencingFile: options.filePath,
+    searchRoots: options.searchRoots,
+  });
 }
 
 class Parser {

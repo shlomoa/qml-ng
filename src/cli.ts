@@ -1,8 +1,7 @@
-import * as fs from 'node:fs';
-import * as path from 'node:path';
 import { renderAngularMaterial } from './lib/angular/material-renderer';
 import { qmlToUiDocument } from './lib/converter/qml-to-ui';
 import { parseQml } from './lib/qml/parser';
+import { FileSystemAdapter, PathAdapter } from './lib/workspace/path-adapter';
 
 function pascalCase(name: string): string {
   return name
@@ -19,11 +18,15 @@ if (!inputFile) {
   process.exit(1);
 }
 
+// Use path adapter for boundary operations
+const pathAdapter = new PathAdapter();
+const fsAdapter = new FileSystemAdapter();
+
 const nameIndex = rest.indexOf('--name');
-const rawName = nameIndex >= 0 ? rest[nameIndex + 1] : path.basename(inputFile, '.qml');
+const rawName = nameIndex >= 0 ? rest[nameIndex + 1] : pathAdapter.extractComponentName(inputFile);
 const componentName = rawName || 'qml-component';
 
-const qml = fs.readFileSync(inputFile, 'utf-8');
+const qml = fsAdapter.readQmlFile(inputFile);
 const document = qmlToUiDocument(componentName, parseQml(qml));
 const rendered = renderAngularMaterial(document, `${pascalCase(componentName)}Component`);
 

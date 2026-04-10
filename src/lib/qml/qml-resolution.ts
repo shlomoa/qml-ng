@@ -1,7 +1,6 @@
-import * as fs from 'node:fs';
-import * as path from 'node:path';
 import { QmlDocument, QmlObjectNode } from './ast';
 import { parseQml } from './parser';
+import { FileSystemAdapter, PathAdapter, QmlFileAdapter } from '../workspace/path-adapter';
 
 export interface QmlParseOptions {
   filePath?: string;
@@ -28,8 +27,12 @@ export function collectResolvedQmlDependencies(
   const resolved = new Set<string>();
   const searchRoots = options.searchRoots ?? [];
 
+  // Use adapters for filesystem operations
+  const fsAdapter = new FileSystemAdapter();
+  const pathAdapter = new PathAdapter();
+
   const visitFile = (filePath: string) => {
-    const normalized = path.normalize(filePath);
+    const normalized = pathAdapter.normalize(filePath);
     if (visited.has(normalized)) {
       return;
     }
@@ -37,7 +40,7 @@ export function collectResolvedQmlDependencies(
     visited.add(normalized);
     resolved.add(normalized);
 
-    const source = fs.readFileSync(normalized, 'utf8');
+    const source = fsAdapter.readQmlFile(normalized);
     const document: QmlDocument = parseQml(source, {
       filePath: normalized,
       searchRoots
