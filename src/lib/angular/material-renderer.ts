@@ -42,12 +42,24 @@ function renderBoundAttribute(name: string, expression: string): string {
   return `[${name}]='${escapedExpression}'`;
 }
 
+function containerClassName(node: UiNode): string {
+  if (node.meta?.role === 'window') return 'qml-window';
+  if (node.meta?.role === 'group') return 'qml-group';
+  if (node.meta?.layoutKind === 'stack') return 'qml-stack-layout';
+  if (node.meta?.layoutKind === 'grid') return 'qml-grid-layout';
+  if (node.meta?.layoutKind === 'flexbox') return 'qml-flexbox-layout';
+  if (node.meta?.layoutKind === 'row-layout') return 'qml-row-layout';
+  if (node.meta?.layoutKind === 'column-layout') return 'qml-column-layout';
+  if (node.meta?.orientation === 'row') return 'qml-row';
+  return 'qml-column';
+}
+
 function renderNode(node: UiNode, ctx: RenderContext): string {
   switch (node.kind) {
     case 'container': {
-      const orientation = node.meta?.orientation === 'row' ? 'qml-row' : 'qml-column';
-      const content = node.children.map(child => renderNode(child, ctx)).join('\n');
-      return `<div class="${orientation}"${renderEvents(node)}>\n${content}\n</div>`;
+      const className = containerClassName(node);
+      const content = node.children.map(child => renderNode(child, ctx)).filter(Boolean).join('\n');
+      return `<div class="${className}"${renderEvents(node)}>${content ? `\n${content}\n` : ''}</div>`;
     }
 
     case 'text': {
@@ -64,10 +76,18 @@ function renderNode(node: UiNode, ctx: RenderContext): string {
       ].join('\n');
     }
 
+    case 'image': {
+      const sourceExpr = bindingLiteralOrExpr(node.source, 'imageSource', ctx);
+      return `<img class="qml-image"${renderEvents(node)} ${renderBoundAttribute('src', sourceExpr)}>`;
+    }
+
     case 'button': {
       const textExpr = bindingLiteralOrExpr(node.text, 'buttonText', ctx);
       return `<button mat-raised-button${renderEvents(node)}>{{ ${textExpr} }}</button>`;
     }
+
+    case 'animation':
+      return '';
 
     case 'unknown':
     default:
@@ -140,15 +160,55 @@ export function renderAngularMaterial(doc: UiDocument, className: string): Rende
     '}',
     '',
     '.qml-column {',
+      '  display: flex;',
+      '  flex-direction: column;',
+      '  gap: 16px;',
+    '}',
+    '',
+    '.qml-row {',
+      '  display: flex;',
+      '  flex-direction: row;',
+      '  gap: 16px;',
+    '}',
+    '',
+    '.qml-column-layout {',
     '  display: flex;',
     '  flex-direction: column;',
     '  gap: 16px;',
     '}',
     '',
-    '.qml-row {',
+    '.qml-row-layout {',
     '  display: flex;',
     '  flex-direction: row;',
     '  gap: 16px;',
+    '}',
+    '',
+    '.qml-window {',
+    '  display: block;',
+    '}',
+    '',
+    '.qml-group {',
+      '  display: block;',
+    '}',
+    '',
+    '.qml-stack-layout {',
+      '  display: block;',
+    '}',
+    '',
+    '.qml-grid-layout {',
+    '  display: grid;',
+    '  gap: 16px;',
+    '}',
+    '',
+    '.qml-flexbox-layout {',
+    '  display: flex;',
+    '  flex-wrap: wrap;',
+    '  gap: 16px;',
+    '}',
+    '',
+    '.qml-image {',
+    '  display: block;',
+    '  max-width: 100%;',
     '}',
     '',
     '.qml-unsupported {',

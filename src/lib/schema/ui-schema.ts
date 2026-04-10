@@ -17,11 +17,12 @@ export interface UiLayout {
 }
 
 export interface UiNode {
-  kind: 'container' | 'text' | 'input' | 'button' | 'unknown';
+  kind: 'container' | 'text' | 'input' | 'button' | 'image' | 'animation' | 'unknown';
   id?: string;
   name?: string;
   text?: UiBinding;
   placeholder?: UiBinding;
+  source?: UiBinding;
   layout?: UiLayout;
   events: UiEvent[];
   children: UiNode[];

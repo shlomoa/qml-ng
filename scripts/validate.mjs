@@ -52,12 +52,28 @@ function componentTypeFromUiFile(uiFile) {
   return path.basename(uiFile).replace(/\.ui\.qml$/, '');
 }
 
+function assertContains(text, snippet, label) {
+  if (!text.includes(snippet)) {
+    throw new Error(`Expected ${label} to contain:\n${snippet}`);
+  }
+}
+
+function assertNotContains(text, snippet, label) {
+  if (text.includes(snippet)) {
+    throw new Error(`Expected ${label} not to contain:\n${snippet}`);
+  }
+}
+
 async function loadBuiltModules() {
   const parser = await import(pathToFileURL(path.join(repoRoot, 'dist', 'lib', 'qml', 'parser.js')).href);
   const resolver = await import(pathToFileURL(path.join(repoRoot, 'dist', 'lib', 'qml', 'qml-resolution.js')).href);
+  const converter = await import(pathToFileURL(path.join(repoRoot, 'dist', 'lib', 'converter', 'qml-to-ui.js')).href);
+  const renderer = await import(pathToFileURL(path.join(repoRoot, 'dist', 'lib', 'angular', 'material-renderer.js')).href);
   return {
     parseQml: parser.parseQml,
-    collectResolvedQmlDependencies: resolver.collectResolvedQmlDependencies
+    collectResolvedQmlDependencies: resolver.collectResolvedQmlDependencies,
+    qmlToUiDocument: converter.qmlToUiDocument,
+    renderAngularMaterial: renderer.renderAngularMaterial
   };
 }
 
@@ -124,6 +140,80 @@ function validateProject(mods, projectName, projectFile) {
   };
 }
 
+function validateLayoutSamples(mods) {
+  const cases = [
+    {
+      label: 'column layout sample',
+      source: `ColumnLayout {\n  Text { text: "A" }\n}`,
+      componentName: 'column-layout-sample',
+      className: 'ColumnLayoutSampleComponent',
+      htmlContains: ['class="qml-column-layout"']
+    },
+    {
+      label: 'row layout sample',
+      source: `RowLayout {\n  Text { text: "A" }\n}`,
+      componentName: 'row-layout-sample',
+      className: 'RowLayoutSampleComponent',
+      htmlContains: ['class="qml-row-layout"']
+    },
+    {
+      label: 'grid layout sample',
+      source: `GridLayout {\n  Text { text: "A" }\n  Text { text: "B" }\n}`,
+      componentName: 'grid-layout-sample',
+      className: 'GridLayoutSampleComponent',
+      htmlContains: ['class="qml-grid-layout"']
+    },
+    {
+      label: 'flexbox layout sample',
+      source: `FlexboxLayout {\n  Text { text: "A" }\n  Text { text: "B" }\n}`,
+      componentName: 'flexbox-layout-sample',
+      className: 'FlexboxLayoutSampleComponent',
+      htmlContains: ['class="qml-flexbox-layout"']
+    }
+  ];
+
+  for (const testCase of cases) {
+    const document = mods.qmlToUiDocument(
+      testCase.componentName,
+      mods.parseQml(testCase.source)
+    );
+    const rendered = mods.renderAngularMaterial(document, testCase.className);
+    for (const snippet of testCase.htmlContains) {
+      assertContains(rendered.html, snippet, `${testCase.label} HTML`);
+    }
+    assertNotContains(rendered.html, 'Unsupported node:', `${testCase.label} HTML`);
+  }
+}
+
+function validateRenderedFile(mods, testCase) {
+  const source = fs.readFileSync(testCase.filePath, 'utf8');
+  const document = mods.qmlToUiDocument(
+    testCase.componentName,
+    mods.parseQml(source, {
+      filePath: testCase.filePath,
+      searchRoots: [path.dirname(path.dirname(testCase.filePath))]
+    })
+  );
+  const rendered = mods.renderAngularMaterial(document, testCase.className);
+  assertContains(rendered.html, `<div class="`, `${testCase.label} HTML`);
+
+  for (const snippet of testCase.htmlContains ?? []) {
+    assertContains(rendered.html, snippet, `${testCase.label} HTML`);
+  }
+
+  for (const snippet of testCase.htmlNotContains ?? []) {
+    assertNotContains(rendered.html, snippet, `${testCase.label} HTML`);
+  }
+
+  for (const snippet of testCase.diagnosticsContains ?? []) {
+    assertContains(document.diagnostics.join('\n') || 'None', snippet, `${testCase.label} diagnostics`);
+  }
+
+  for (const snippet of testCase.diagnosticsNotContains ?? []) {
+    assertNotContains(document.diagnostics.join('\n') || 'None', snippet, `${testCase.label} diagnostics`);
+  }
+}
+
 const mods = await loadBuiltModules();
 
 const projects = [
@@ -134,6 +224,34 @@ const projects = [
   {
     name: 'WebinarDemo',
     projectFile: path.join(repoRoot, 'examples', 'WebinarDemo', 'WebinarDemo.qmlproject')
+  }
+];
+
+const renderedCases = [
+  {
+    label: 'webinar app shell renders window',
+    filePath: path.join(repoRoot, 'examples', 'WebinarDemo', 'WebinarDemoContent', 'App.qml'),
+    componentName: 'webinar-demo-app',
+    className: 'WebinarDemoAppComponent',
+    htmlContains: ['class="qml-window"'],
+    htmlNotContains: ['Unsupported node: Window'],
+    diagnosticsNotContains: ['Unsupported QML type: Window']
+  },
+  {
+    label: 'webinar stacked view renders image and stack layout',
+    filePath: path.join(repoRoot, 'examples', 'WebinarDemo', 'WebinarDemoContent', 'MainApp.ui.qml'),
+    componentName: 'webinar-main-app',
+    className: 'WebinarMainAppComponent',
+    htmlContains: ['class="qml-stack-layout"', 'class="qml-image"'],
+    htmlNotContains: ['Unsupported node: StackLayout', 'Unsupported node: Image'],
+    diagnosticsNotContains: ['Unsupported QML type: StackLayout', 'Unsupported QML type: Image']
+  },
+  {
+    label: 'webinar popup keyframes are ignored',
+    filePath: path.join(repoRoot, 'examples', 'WebinarDemo', 'WebinarDemoContent', 'Smallpopup.ui.qml'),
+    componentName: 'webinar-smallpopup',
+    className: 'WebinarSmallpopupComponent',
+    diagnosticsNotContains: ['Unsupported QML type: KeyframeGroup']
   }
 ];
 
@@ -152,6 +270,14 @@ for (const result of results) {
   );
   console.log(`Reachable dependency count: ${result.reachable.length}`);
 }
+
+for (const testCase of renderedCases) {
+  console.log(`Rendering ${testCase.label}...`);
+  validateRenderedFile(mods, testCase);
+}
+
+console.log('Rendering layout samples...');
+validateLayoutSamples(mods);
 
 if (failures.length) {
   const message = failures

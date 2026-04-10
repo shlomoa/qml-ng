@@ -40,24 +40,77 @@ export function qmlNodeToUi(node: QmlObjectNode, diagnostics: string[]): UiNode 
   const layout = resolveLayout(node.properties);
 
   switch (node.typeName) {
-    case 'Column':
+    case 'Window':
       return {
         kind: 'container',
-        name: 'Column',
+        name: 'Window',
         layout,
         events,
         children: children(node.children, diagnostics),
-        meta: { orientation: 'column' }
+        meta: { role: 'window' }
+      };
+
+    case 'Item':
+    case 'Rectangle':
+      return {
+        kind: 'container',
+        name: node.typeName,
+        layout,
+        events,
+        children: children(node.children, diagnostics),
+        meta: { role: 'group' }
+      };
+
+    case 'Column':
+    case 'ColumnLayout':
+      return {
+        kind: 'container',
+        name: node.typeName,
+        layout,
+        events,
+        children: children(node.children, diagnostics),
+        meta: { orientation: 'column', layoutKind: node.typeName === 'ColumnLayout' ? 'column-layout' : 'column' }
       };
 
     case 'Row':
+    case 'RowLayout':
       return {
         kind: 'container',
-        name: 'Row',
+        name: node.typeName,
         layout,
         events,
         children: children(node.children, diagnostics),
-        meta: { orientation: 'row' }
+        meta: { orientation: 'row', layoutKind: node.typeName === 'RowLayout' ? 'row-layout' : 'row' }
+      };
+
+    case 'StackLayout':
+      return {
+        kind: 'container',
+        name: 'StackLayout',
+        layout,
+        events,
+        children: children(node.children, diagnostics),
+        meta: { layoutKind: 'stack' }
+      };
+
+    case 'GridLayout':
+      return {
+        kind: 'container',
+        name: 'GridLayout',
+        layout,
+        events,
+        children: children(node.children, diagnostics),
+        meta: { layoutKind: 'grid' }
+      };
+
+    case 'FlexboxLayout':
+      return {
+        kind: 'container',
+        name: 'FlexboxLayout',
+        layout,
+        events,
+        children: children(node.children, diagnostics),
+        meta: { layoutKind: 'flexbox' }
       };
 
     case 'Text': {
@@ -66,6 +119,18 @@ export function qmlNodeToUi(node: QmlObjectNode, diagnostics: string[]): UiNode 
         kind: 'text',
         name: 'Text',
         text: lowerBinding(raw).binding,
+        layout,
+        events,
+        children: []
+      };
+    }
+
+    case 'Image': {
+      const raw = propertyText(node.properties, 'source') ?? '""';
+      return {
+        kind: 'image',
+        name: 'Image',
+        source: lowerBinding(raw).binding,
         layout,
         events,
         children: []
@@ -83,6 +148,15 @@ export function qmlNodeToUi(node: QmlObjectNode, diagnostics: string[]): UiNode 
         children: []
       };
     }
+
+    case 'KeyframeGroup':
+      return {
+        kind: 'animation',
+        name: 'KeyframeGroup',
+        events,
+        children: [],
+        meta: { ignored: true }
+      };
 
     case 'Button': {
       const raw = propertyText(node.properties, 'text') ?? '"Button"';

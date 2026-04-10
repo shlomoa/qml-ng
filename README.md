@@ -43,9 +43,19 @@ The current implementation is intentionally small:
 
 - `Column`
 - `Row`
+- `Item`
+- `Rectangle`
+- `Window`
+- `StackLayout`
+- `ColumnLayout`
+- `RowLayout`
+- `GridLayout`
+- `FlexboxLayout`
+- `Image`
 - `Text`
 - `TextField`
 - `Button`
+- `KeyframeGroup` is recognized and skipped conservatively
 - selected properties:
   - `text`
   - `placeholderText`
