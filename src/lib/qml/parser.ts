@@ -273,8 +273,10 @@ class Parser {
 
   private parseComponentDeclaration(): QmlObjectNode {
     this.expect('identifier');
-    const type = this.parseTypeName();
+    this.expect('identifier');
     this.expect('colon');
+    const type = this.parseTypeName();
+    this.skipNoise();
     return this.parseObjectBody(type, true);
   }
 
