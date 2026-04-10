@@ -4,6 +4,7 @@ import { renderAngularMaterial } from './lib/angular/material-renderer';
 import { qmlToUiDocument } from './lib/converter/qml-to-ui';
 import { parseQml } from './lib/qml/parser';
 import { formatDiagnostics } from './lib/diagnostics/formatter';
+import { convertDirectory, convertBatch, formatBatchSummary } from './lib/batch/batch-converter';
 
 interface CliOptions {
   name?: string;
@@ -12,6 +13,8 @@ interface CliOptions {
   strict: boolean;
   verbose: boolean;
   outputDir?: string;
+  batch: boolean;
+  recursive: boolean;
 }
 
 function parseArgs(args: string[]): { inputFile: string; options: CliOptions } {
@@ -19,7 +22,9 @@ function parseArgs(args: string[]): { inputFile: string; options: CliOptions } {
     dryRun: false,
     diff: false,
     strict: false,
-    verbose: false
+    verbose: false,
+    batch: false,
+    recursive: true
   };
 
   let inputFile = '';
@@ -39,6 +44,10 @@ function parseArgs(args: string[]): { inputFile: string; options: CliOptions } {
       options.verbose = true;
     } else if (arg === '--output-dir' && i + 1 < args.length) {
       options.outputDir = args[++i];
+    } else if (arg === '--batch') {
+      options.batch = true;
+    } else if (arg === '--no-recursive') {
+      options.recursive = false;
     } else if (!inputFile && !arg.startsWith('--')) {
       inputFile = arg;
     }
@@ -56,11 +65,13 @@ function pascalCase(name: string): string {
 }
 
 function printUsage(): void {
-  console.log(`Usage: qml-ng <input.qml> [options]
+  console.log(`Usage: qml-ng <input.qml|directory> [options]
 
 Options:
   --name <name>         Component name (default: basename of input file)
   --output-dir <dir>    Output directory for generated files
+  --batch               Process all QML files in a directory
+  --no-recursive        Don't recursively search subdirectories (with --batch)
   --dry-run             Show output without writing files
   --diff                Show changes that would be made (implies --dry-run)
   --strict              Exit with error if there are any unsupported features
@@ -71,6 +82,8 @@ Examples:
   qml-ng input.qml --name MyComponent
   qml-ng input.qml --dry-run
   qml-ng input.qml --strict --verbose
+  qml-ng examples/ --batch --output-dir output/
+  qml-ng examples/ --batch --no-recursive
 `);
 }
 
@@ -90,7 +103,85 @@ if (!inputFile) {
 }
 
 if (!fs.existsSync(inputFile)) {
-  console.error(`Error: File not found: ${inputFile}`);
+  console.error(`Error: File or directory not found: ${inputFile}`);
+  process.exit(1);
+}
+
+// Handle batch mode for directories
+if (options.batch || fs.statSync(inputFile).isDirectory()) {
+  if (!fs.statSync(inputFile).isDirectory()) {
+    console.error('Error: --batch requires a directory as input');
+    process.exit(1);
+  }
+
+  console.log(`Processing QML files in: ${inputFile}`);
+  console.log(`Recursive: ${options.recursive}`);
+  console.log('');
+
+  const summary = convertDirectory(inputFile, {
+    recursive: options.recursive
+  });
+
+  console.log(formatBatchSummary(summary));
+
+  // Write files if output directory is specified
+  if (options.outputDir && !options.dryRun && !options.diff) {
+    const outputDir = path.resolve(options.outputDir);
+    if (!fs.existsSync(outputDir)) {
+      fs.mkdirSync(outputDir, { recursive: true });
+    }
+
+    let written = 0;
+    for (const result of summary.results) {
+      if (result.success && result.output) {
+        const baseName = `${result.componentName}.component`;
+        const componentDir = path.join(outputDir, result.componentName);
+        fs.mkdirSync(componentDir, { recursive: true });
+
+        fs.writeFileSync(path.join(componentDir, `${baseName}.ts`), result.output.ts);
+        fs.writeFileSync(path.join(componentDir, `${baseName}.html`), result.output.html);
+        fs.writeFileSync(path.join(componentDir, `${baseName}.scss`), result.output.scss);
+        written++;
+      }
+    }
+
+    console.log('');
+    console.log(`Written ${written} component(s) to ${outputDir}`);
+  }
+
+  // Show detailed diagnostics if verbose
+  if (options.verbose) {
+    console.log('');
+    console.log('='.repeat(60));
+    console.log('DETAILED DIAGNOSTICS');
+    console.log('='.repeat(60));
+    for (const result of summary.results) {
+      if (result.diagnostics.length > 0) {
+        console.log('');
+        console.log(`File: ${result.inputFile}`);
+        console.log(formatDiagnostics(result.diagnostics, { verbose: true }));
+      }
+    }
+  }
+
+  // Exit with error if strict mode and there are issues
+  if (options.strict && (summary.errorCount > 0 || summary.warningCount > 0)) {
+    console.error('');
+    console.error('Strict mode: Batch conversion failed due to unsupported features');
+    process.exit(1);
+  }
+
+  // Exit with error if there are any errors
+  if (summary.errorCount > 0 || summary.failedConversions > 0) {
+    process.exit(1);
+  }
+
+  process.exit(0);
+}
+
+// Single file mode
+if (!fs.statSync(inputFile).isFile()) {
+  console.error('Error: Input must be a QML file or use --batch for directories');
   process.exit(1);
 }
 
