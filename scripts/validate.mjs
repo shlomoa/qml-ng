@@ -206,11 +206,13 @@ function validateRenderedFile(mods, testCase) {
   }
 
   for (const snippet of testCase.diagnosticsContains ?? []) {
-    assertContains(document.diagnostics.join('\n') || 'None', snippet, `${testCase.label} diagnostics`);
+    const diagnosticsText = document.diagnostics.map(d => d.message).join('\n') || 'None';
+    assertContains(diagnosticsText, snippet, `${testCase.label} diagnostics`);
   }
 
   for (const snippet of testCase.diagnosticsNotContains ?? []) {
-    assertNotContains(document.diagnostics.join('\n') || 'None', snippet, `${testCase.label} diagnostics`);
+    const diagnosticsText = document.diagnostics.map(d => d.message).join('\n') || 'None';
+    assertNotContains(diagnosticsText, snippet, `${testCase.label} diagnostics`);
   }
 }
 

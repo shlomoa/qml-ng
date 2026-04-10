@@ -14,7 +14,11 @@ A starter repository for converting a subset of [QML] into Angular standalone co
 - Angular Material HTML / TS / SCSS renderer
 - automatic Material imports per generated component
 - Angular schematic collection with `qml-component`
-- simple CLI for local experimentation
+- CLI with developer experience features (see [DEVELOPER_EXPERIENCE.md](./DEVELOPER_EXPERIENCE.md))
+  - Enhanced diagnostics with severity and source positions
+  - Dry-run and diff modes
+  - Strict mode for CI/CD integration
+  - Batch conversion for directory-scale processing
 
 ## Example corpus
 
@@ -78,11 +82,32 @@ The new example corpus shows the next wave of features the project will need to 
 
 ## Typical flow
 
+### Single file conversion
+
 ```bash
+# Basic conversion
 node dist/cli.js examples/login.qml --name login-card
+
+# Preview without writing files
+node dist/cli.js examples/login.qml --dry-run
+
+# Write to output directory
+node dist/cli.js examples/login.qml --name MyComponent --output-dir src/components
 ```
 
-This prints generated component files to stdout for the small supported subset. The larger example folders are better treated as regression fixtures and roadmap inputs than as current smoke tests.
+### Batch conversion
+
+```bash
+# Convert all QML files in a directory
+node dist/cli.js examples/test-directory --batch --output-dir output/
+
+# Strict mode for CI/CD (fails on unsupported features)
+node dist/cli.js examples/ --batch --strict --verbose
+```
+
+For detailed documentation on CLI modes and features, see [DEVELOPER_EXPERIENCE.md](./DEVELOPER_EXPERIENCE.md).
+
+The larger example folders are better treated as regression fixtures and roadmap inputs than as current smoke tests.
 
 For day-to-day validation:
 
