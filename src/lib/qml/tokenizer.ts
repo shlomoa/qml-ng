@@ -58,6 +58,17 @@ export function tokenizeQml(source: string): Token[] {
       continue;
     }
 
+    if (ch === '/' && source[i + 1] === '*') {
+      i += 2;
+      while (i < source.length && !(source[i] === '*' && source[i + 1] === '/')) {
+        i += 1;
+      }
+      if (i < source.length) {
+        i += 2;
+      }
+      continue;
+    }
+
     if (ch === '{') { push('lbrace', ch, i); i += 1; continue; }
     if (ch === '}') { push('rbrace', ch, i); i += 1; continue; }
     if (ch === '[') { push('lbracket', ch, i); i += 1; continue; }

@@ -8,6 +8,8 @@ class Parser {
 
   parseDocument(): QmlDocument {
     this.skipNoise();
+    this.skipTopLevelPreamble();
+    this.skipNoise();
     const root = this.parseObject();
     return { root };
   }
@@ -51,6 +53,21 @@ class Parser {
   }
 
   private parsePropertyName(): string {
+    if (this.isTypedPropertyPrefix()) {
+      const parts: string[] = [];
+      while (!this.match('colon') && !this.match('eof')) {
+        const token = this.peek();
+        if (token.kind === 'identifier') {
+          parts.push(token.value);
+        }
+        this.index += 1;
+      }
+      if (!parts.length) {
+        throw new Error(`Expected typed property name at ${this.peek().position}`);
+      }
+      return parts[parts.length - 1];
+    }
+
     let name = this.expect('identifier').value;
     while (this.match('dot')) {
       this.expect('dot');
@@ -112,13 +129,40 @@ class Parser {
   private looksLikeProperty(): boolean {
     let i = this.index;
     if (this.tokens[i]?.kind !== 'identifier') return false;
-    i += 1;
-    while (this.tokens[i]?.kind === 'dot') {
-      i += 1;
-      if (this.tokens[i]?.kind !== 'identifier') return false;
+    while (!['colon', 'newline', 'rbrace', 'eof'].includes(this.tokens[i]?.kind ?? 'eof')) {
+      if (this.tokens[i]?.kind === 'lbrace') return false;
       i += 1;
     }
     return this.tokens[i]?.kind === 'colon';
+  }
+
+  private isTypedPropertyPrefix(): boolean {
+    if (this.peek().kind !== 'identifier') return false;
+    return ['property', 'readonly', 'required', 'default'].includes(this.peek().value);
+  }
+
+  private skipTopLevelPreamble(): void {
+    while (!this.match('eof')) {
+      this.skipNoise();
+
+      if (this.peek().kind !== 'identifier') {
+        break;
+      }
+
+      if (this.peek().value === 'import' || this.peek().value === 'pragma') {
+        this.skipLine();
+        continue;
+      }
+
+      break;
+    }
+  }
+
+  private skipLine(): void {
+    while (!this.match('eof') && !this.match('newline')) {
+      this.index += 1;
+    }
+    this.skipNoise();
   }
 
   private skipNoise(): void {

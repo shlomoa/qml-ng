@@ -12,6 +12,8 @@ The design goal is not pixel-perfect Qt reproduction. The design goal is semanti
 - user interaction handlers
 - basic layout intent
 
+The repository now also carries a much larger example corpus under [`examples/FigmaVariants`](./examples/FigmaVariants) and [`examples/WebinarDemo`](./examples/WebinarDemo). Those projects introduce hundreds of QML files and a much wider set of building blocks, including custom controls, `QtQuick.Layouts`, `QtQuick.Templates`, state machines, timeline/keyframe constructs, graphics primitives, effects, and multi-file component bundles. They should be treated as architectural pressure tests and regression fixtures rather than as a statement of already-supported output.
+
 That leads to a layered compiler architecture:
 
 ```text
@@ -57,6 +59,7 @@ Responsibilities:
 - parse nested object declarations
 - parse property assignments
 - keep handlers and ordinary properties distinguishable
+- leave room for example-driven constructs such as property aliases, state blocks, `PropertyChanges`, arrays, and richer import usage to be modeled explicitly rather than guessed
 
 ### 3.2 Normalization
 Normalization converts QML-specific nodes into a canonical schema that is independent of Angular.
@@ -67,6 +70,8 @@ Responsibilities:
 - collect handlers such as `onClicked`
 - collect anchor properties into layout metadata
 
+The larger examples make it clear that future normalization work will need to absorb a broader primitive set such as `Item`, `Rectangle`, `Image`, `CheckBox`, layout containers from `QtQuick.Layouts`, and custom component references spanning multiple source files.
+
 ### 3.3 Semantic lowering
 This is the Phase 3 compiler layer.
 
@@ -75,6 +80,8 @@ Responsibilities:
 - lower reactive expressions to Angular Signals concepts
 - map QML handlers into Angular template event bindings
 - map selected anchor semantics into CSS/flex behavior
+
+The example corpus adds direct pressure on this layer because it leans on property aliases, stateful variants, timeline data, drag interactions, and component-to-component bindings that do not fit comfortably in the current string-heuristic lowering model.
 
 ### 3.4 Rendering
 Rendering generates Angular source files.
@@ -85,6 +92,8 @@ Responsibilities:
 - Angular template
 - SCSS layout rules
 - placeholder diagnostics for unsupported features
+
+The renderer is still Angular Material-first, but the examples show that longer-term rendering will need a more formal contract for non-Material primitives, graphics-heavy widgets, bundle-level composition, and explicit unsupported markers when fidelity would otherwise be misleading.
 
 ## 4. Parser Architecture
 
@@ -319,6 +328,8 @@ src/
         __name@dasherize__.component.scss.template
 examples/
   login.qml
+  FigmaVariants/
+  WebinarDemo/
 ```
 
 ## 11. Next steps after Phase 3
@@ -331,3 +342,4 @@ The strongest next step would be:
 - more layout constraints
 - component extraction and template splitting
 - richer Material mapping
+- example-driven golden tests over the larger sample corpus
