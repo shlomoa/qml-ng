@@ -71,7 +71,11 @@ class Parser {
     const rootType = this.parseTypeName();
     this.skipNoise();
     const root = this.parseObjectBody(rootType, false);
-    return { root };
+    return {
+      root,
+      imports: [],
+      pragmas: []
+    };
   }
 
   private parseObjectBody(type: string, resolveSourcePath: boolean): QmlObjectNode {
@@ -107,6 +111,9 @@ class Parser {
       kind: 'object',
       typeName: type,
       properties,
+      handlers: [],
+      signals: [],
+      functions: [],
       children
     };
 

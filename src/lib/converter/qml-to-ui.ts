@@ -2,7 +2,7 @@ import { QmlDocument, QmlObjectNode, QmlProperty } from '../qml/ast';
 import { lowerBinding } from './expression-lowering';
 import { isQmlHandlerName, mapQmlHandler } from './event-mapper';
 import { resolveLayout } from './layout-resolver';
-import { UiDocument, UiNode } from '../schema/ui-schema';
+import { UiDocument, UiNode, UiDiagnostic } from '../schema/ui-schema';
 
 function propertyMap(properties: QmlProperty[]): Map<string, QmlProperty> {
   return new Map(properties.map(p => [p.name, p]));
@@ -13,7 +13,10 @@ function propertyText(properties: QmlProperty[], name: string): string | undefin
   if (!value) return undefined;
   if (value.kind === 'string') return JSON.stringify(value.value);
   if (value.kind === 'number') return String(value.value);
-  return value.value;
+  if (value.kind === 'array') return '[]'; // Simplified
+  if (value.kind === 'binding') return value.expression;
+  if (value.kind === 'identifier' || value.kind === 'expression') return value.value;
+  return undefined;
 }
 
 function collectChildObjects(node: QmlObjectNode): QmlObjectNode[] {
@@ -23,7 +26,7 @@ function collectChildObjects(node: QmlObjectNode): QmlObjectNode[] {
   ];
 }
 
-function children(nodes: QmlObjectNode[], diagnostics: string[]): UiNode[] {
+function children(nodes: QmlObjectNode[], diagnostics: UiDiagnostic[]): UiNode[] {
   return nodes.map(node => qmlNodeToUi(node, diagnostics));
 }
 
@@ -35,10 +38,14 @@ function qmlValueToHandler(value: QmlProperty['value']): string {
       return value.value;
     case 'number':
       return String(value.value);
+    case 'array':
+      return '[]';
+    case 'binding':
+      return value.expression;
   }
 }
 
-export function qmlNodeToUi(node: QmlObjectNode, diagnostics: string[]): UiNode {
+export function qmlNodeToUi(node: QmlObjectNode, diagnostics: UiDiagnostic[]): UiNode {
   const props = propertyMap(node.properties);
   const events = node.properties
     .filter(p => isQmlHandlerName(p.name))
@@ -205,7 +212,15 @@ export function qmlNodeToUi(node: QmlObjectNode, diagnostics: string[]): UiNode 
     }
 
     default:
-      diagnostics.push(`Unsupported QML type: ${node.typeName}`);
+      diagnostics.push({
+        severity: 'warning',
+        category: 'semantic',
+        message: `Unsupported QML type: ${node.typeName}`,
+        file: undefined,
+        line: undefined,
+        column: undefined,
+        position: undefined
+      });
       return {
         kind: 'unknown',
         name: node.typeName,
@@ -218,7 +233,7 @@ export function qmlNodeToUi(node: QmlObjectNode, diagnostics: string[]): UiNode 
 }
 
 export function qmlToUiDocument(name: string, qml: QmlDocument): UiDocument {
-  const diagnostics: string[] = [];
+  const diagnostics: UiDiagnostic[] = [];
   return {
     name,
     root: qmlNodeToUi(qml.root, diagnostics),
