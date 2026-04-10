@@ -35,6 +35,13 @@ function renderEvents(node: UiNode): string {
   return ' ' + node.events.map(e => `(${e.angularEvent})="${e.handler}"`).join(' ');
 }
 
+function renderBoundAttribute(name: string, expression: string): string {
+  const escapedExpression = expression
+    .replace(/&/g, '&amp;')
+    .replace(/'/g, '&#39;');
+  return `[${name}]='${escapedExpression}'`;
+}
+
 function renderNode(node: UiNode, ctx: RenderContext): string {
   switch (node.kind) {
     case 'container': {
@@ -52,7 +59,7 @@ function renderNode(node: UiNode, ctx: RenderContext): string {
       const placeholderExpr = bindingLiteralOrExpr(node.placeholder, 'placeholder', ctx);
       return [
         `<mat-form-field appearance="outline"${renderEvents(node)}>`,
-        `  <input matInput [placeholder]="${placeholderExpr}">`,
+        `  <input matInput ${renderBoundAttribute('placeholder', placeholderExpr)}>`,
         `</mat-form-field>`
       ].join('\n');
     }
