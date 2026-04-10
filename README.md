@@ -1,6 +1,6 @@
-# qml-ng-starter
+# qml-ng
 
-Starter repository for converting QML into Angular standalone components with Angular Material.
+This project provides a conversion solution from QML into Angular standalone components with Angular Material.
 
 ## What is included
 

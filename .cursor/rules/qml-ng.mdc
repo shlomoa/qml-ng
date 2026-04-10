@@ -1,0 +1,15 @@
+---
+description: Project-wide guidance for qml-ng, a QML-to-Angular Material generator
+alwaysApply: true
+---
+
+# qml-ng Cursor Rule
+
+- This repository is a TypeScript code generator, not a runtime Angular app.
+- Follow the existing pipeline: `src/lib/qml/qml-parser.ts` -> `src/lib/converter/qml-to-schema.ts` -> `src/lib/angular/material-renderer.ts` -> `src/lib/converter/converter.ts` -> `src/schematics/qml-component/index.ts`.
+- Prefer schema-first changes. Extend `UiDocument` and related node types before modifying renderers or schematic output.
+- Keep the parser conservative and explicit. Unsupported QML should remain a diagnostic or unsupported placeholder instead of being guessed.
+- Preserve deterministic output and escaping in generated HTML, SCSS, and import lists.
+- When adding support for a new control, update the schema, mapper, renderer, and any Angular template imports that need to match.
+- Validate with `npm run build`. Use `node dist/cli.js examples/login.qml login-form` for a smoke test after building.
+- `npm test` is currently a placeholder and should not be treated as real verification.
