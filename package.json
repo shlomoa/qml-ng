@@ -14,7 +14,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "clean": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\"",
-    "validate": "npm run build && node scripts/validate.mjs"
+    "validate": "npm run build && node scripts/validate.mjs",
+    "benchmark": "npm run build && node scripts/benchmark.mjs"
   },
   "dependencies": {
     "@angular-devkit/core": "^20.0.0",
