@@ -5,6 +5,11 @@
       "description": "Generate an Angular standalone component from a QML file",
       "factory": "./dist/schematics/qml-component/index#qmlComponentSchematic",
       "schema": "./src/schematics/qml-component/schema.json"
+    },
+    "qml-batch": {
+      "description": "Generate Angular standalone components from a directory of QML files",
+      "factory": "./dist/schematics/qml-batch/index#qmlBatchSchematic",
+      "schema": "./src/schematics/qml-batch/schema.json"
     }
   }
 }
