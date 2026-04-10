@@ -2,6 +2,8 @@ Here is the production roadmap, with the Angular-first direction made explicit.
 
 The short answer on `node:fs` and `node:path` is: they are acceptable only at the **outer boundary** of the system, such as a standalone CLI that reads a `.qml` file from disk. They should **not** be the main mechanism inside the generator itself. For production quality, the core generation flow should lean on Angular schematics and the Angular DevKit virtual file system (`Tree`), because schematics are specifically designed to create, update, and maintain Angular projects in a structured way. Angular’s current guidance still positions schematics as the standard way to package generators into collections and apply project transformations, and Angular continues to emphasize standalone components and Signals as first-class patterns. ([Angular][1])
 
+The current example corpus is also much larger than the original starter scope. The repository now contains roughly 300 QML or `.ui.qml` files, around 130 object types, and many multi-file bundles from Qt Design Studio-style projects. That corpus includes app-shell types like `Window`, foundational primitives like `Item`, `Rectangle`, and `Image`, layout families like `StackLayout` and `RowLayout`, interaction primitives like `MouseArea` and `Connections`, and advanced design constructs such as `State`, `PropertyChanges`, `Timeline`, `Keyframe`, `SvgPathItem`, `ShaderEffect`, and `FastBlur`. The roadmap should therefore be read as a plan for handling a project-shaped QML corpus, not only a tiny hand-written subset.
+
 ## 1. Target architecture to aim for
 
 The production target should be a **compiler-style toolchain**, not a file-spitting script:
@@ -31,23 +33,29 @@ That keeps the engine aligned with Angular’s own tooling model instead of acti
 
 ### Step 1: Lock the product scope
 
-Before improving code, freeze the supported QML subset for version 1.0. For example:
+Before improving code, freeze the supported QML subset for version 1.0 using the expanded example corpus as the reference set. At minimum, explicitly classify the following groups:
 
-* layout containers: `Item`, `Rectangle`, `Row`, `Column`
+* app shells and root nodes: `Window`, `Item`, `Rectangle`
+* layout and composition primitives: `Row`, `Column`, `StackLayout`, `RowLayout`, `ColumnLayout`, `Loader`
 * text/input/action controls: `Text`, `TextField`, `Button`, `CheckBox`
-* selected anchors: `fill`, `centerIn`, left/right/top/bottom variants
-* selected handlers: `onClicked`, `onTextChanged`, `onPressed`
-* selected binding patterns: identifiers, dotted paths, arithmetic, boolean expressions
+* visual and media primitives: `Image`
+* interaction primitives: `MouseArea`, `Connections`
+* selected anchors and geometry: `fill`, `centerIn`, left/right/top/bottom variants, `x`, `y`, `width`, `height`
+* selected handlers: `onClicked`, `onTextChanged`, `onPressed`, and simple assignment-style handlers
+* selected binding patterns: identifiers, dotted paths, arithmetic, boolean expressions, `when:` guards, and common function calls such as `Math.max(...)`
+* property forms that now appear throughout the corpus: `property alias`, typed properties, and declarations such as `property Window ...`
+* multi-file component references and local asset resolution for project-local `.qml` and `.ui.qml` files
 
 Also define what is explicitly out of scope for v1:
 
-* states and transitions
-* animations
-* custom drawing/canvas
+* full state systems beyond a narrow approved subset: `State`, `PropertyChanges`, `Timeline`, `KeyframeGroup`, `Keyframe`
+* transitions, behaviors, and animations
+* graphics-heavy or effect-heavy constructs such as `SvgPathItem`, `ShaderEffect`, `FastBlur`, and custom drawing/canvas
+* complex Design Studio plugin surfaces and custom imported modules beyond a first approved list
 * delegates/models beyond a first limited version
 * imperative JS blocks beyond a small safe subset
 
-Production quality starts with stable boundaries. Otherwise the parser and lowering logic will keep shifting under you. Angular schematics are strongest when they generate repeatable, constrained patterns, not when they try to absorb an unbounded language all at once. ([Angular][2])
+Production quality starts with stable boundaries. Otherwise the parser and lowering logic will keep shifting under you. With the current corpus size, this step is no longer just about a few controls; it is about deciding what happens when the converter sees real app shells, bundle-level component graphs, assets, and many unsupported advanced constructs in the same run. Angular schematics are strongest when they generate repeatable, constrained patterns, not when they try to absorb an unbounded language all at once. ([Angular][2])
 
 ### Step 2: Replace heuristic parsing with a formal grammar layer
 

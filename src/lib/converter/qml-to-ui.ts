@@ -113,6 +113,26 @@ export function qmlNodeToUi(node: QmlObjectNode, diagnostics: string[]): UiNode 
         meta: { layoutKind: 'flexbox' }
       };
 
+    case 'ScrollView':
+      return {
+        kind: 'container',
+        name: 'ScrollView',
+        layout,
+        events,
+        children: children(node.children, diagnostics),
+        meta: { role: 'scroll-view' }
+      };
+
+    case 'ShapePath':
+      return {
+        kind: 'container',
+        name: 'ShapePath',
+        layout,
+        events,
+        children: children(node.children, diagnostics),
+        meta: { role: 'shape-path' }
+      };
+
     case 'Text': {
       const raw = propertyText(node.properties, 'text') ?? '"TODO"';
       return {
@@ -150,9 +170,14 @@ export function qmlNodeToUi(node: QmlObjectNode, diagnostics: string[]): UiNode 
     }
 
     case 'KeyframeGroup':
+    case 'PathArc':
+    case 'PathLine':
+    case 'PathMove':
+    case 'PathSvg':
+    case 'PathText':
       return {
         kind: 'animation',
-        name: 'KeyframeGroup',
+        name: node.typeName,
         events,
         children: [],
         meta: { ignored: true }

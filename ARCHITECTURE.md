@@ -24,6 +24,12 @@ At the current snapshot, the example corpus is already large enough to act as a 
 
 That scale changes the architecture conversation. The system is no longer only about converting a tiny hand-written subset; it also needs a credible strategy for diagnostics, bundle resolution, unsupported feature handling, and regression testing against real project-shaped inputs.
 
+The expanded scope also includes app-shell and windowing concepts that were not central to the
+original starter framing. The examples now contain direct `Window` roots, typed `property Window`
+declarations, bundle-local reusable components, layout containers from `QtQuick.Layouts`, and many
+asset-backed controls. The architecture should therefore treat root shells, file graphs, and asset
+resolution as first-class concerns rather than as peripheral details.
+
 That leads to a layered compiler architecture:
 
 ```text
@@ -67,6 +73,18 @@ The larger example corpus also exposes cross-cutting concerns around:
 - asset resolution for images, fonts, and shader-backed visuals
 - diagnostics that stay actionable when many unsupported constructs appear in one bundle
 
+It also suggests a practical scope taxonomy for the next phases:
+
+- app-shell and root constructs: `Window`, `Item`, `Rectangle`
+- core controls and media: `Text`, `TextField`, `Button`, `CheckBox`, `Image`
+- composition and interaction: `Row`, `Column`, `StackLayout`, `RowLayout`, `ColumnLayout`,
+  `Loader`, `MouseArea`, `Connections`
+- advanced design constructs: `State`, `PropertyChanges`, `Timeline`, `KeyframeGroup`,
+  `Keyframe`, `SvgPathItem`, `ShaderEffect`, `FastBlur`
+
+That taxonomy does not mean all groups are equally supported today. It means the architecture
+should explicitly account for each group as supported, approximated, or intentionally unsupported.
+
 ### 3.1 Parsing
 Parsing turns text into a structured QML AST.
 
@@ -86,7 +104,10 @@ Responsibilities:
 - collect handlers such as `onClicked`
 - collect anchor properties into layout metadata
 
-The larger examples make it clear that future normalization work will need to absorb a broader primitive set such as `Item`, `Rectangle`, `Image`, `CheckBox`, layout containers from `QtQuick.Layouts`, and custom component references spanning multiple source files.
+The larger examples make it clear that future normalization work will need to absorb a broader
+primitive set such as `Window`, `Item`, `Rectangle`, `Image`, `CheckBox`, layout containers from
+`QtQuick.Layouts`, interaction primitives like `MouseArea` and `Connections`, and custom
+component references spanning multiple source files.
 
 ### 3.3 Semantic lowering
 This is the Phase 3 compiler layer.
@@ -110,6 +131,10 @@ Responsibilities:
 - placeholder diagnostics for unsupported features
 
 The renderer is still Angular Material-first, but the examples show that longer-term rendering will need a more formal contract for non-Material primitives, image-backed and graphics-heavy widgets, bundle-level composition, asset references, and explicit unsupported markers when fidelity would otherwise be misleading.
+
+That includes a clear architectural answer for shell-like constructs such as `Window`: whether they
+become Angular application shells, routable host components, wrapper layouts, or explicit
+unsupported diagnostics in early versions.
 
 ## 4. Parser Architecture
 

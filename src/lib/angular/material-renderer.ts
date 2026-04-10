@@ -45,6 +45,8 @@ function renderBoundAttribute(name: string, expression: string): string {
 function containerClassName(node: UiNode): string {
   if (node.meta?.role === 'window') return 'qml-window';
   if (node.meta?.role === 'group') return 'qml-group';
+  if (node.meta?.role === 'scroll-view') return 'qml-scroll-view';
+  if (node.meta?.role === 'shape-path') return 'qml-shape-path';
   if (node.meta?.layoutKind === 'stack') return 'qml-stack-layout';
   if (node.meta?.layoutKind === 'grid') return 'qml-grid-layout';
   if (node.meta?.layoutKind === 'flexbox') return 'qml-flexbox-layout';
@@ -189,6 +191,17 @@ export function renderAngularMaterial(doc: UiDocument, className: string): Rende
     '',
     '.qml-group {',
       '  display: block;',
+    '}',
+    '',
+    '.qml-scroll-view {',
+    '  display: block;',
+    '  overflow: auto;',
+    '  max-width: 100%;',
+    '  max-height: 100%;',
+    '}',
+    '',
+    '.qml-shape-path {',
+    '  display: contents;',
     '}',
     '',
     '.qml-stack-layout {',
