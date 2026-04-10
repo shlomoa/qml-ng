@@ -36,6 +36,8 @@ The parser currently supports the structural subset used by this starter:
 - handlers like `onClicked: submit()`
 - typed property declarations like `property alias foo: bar`, `property bool open: false`,
   `readonly property int width: 1920`, and `default property alias item: stack.children`
+- inline object-valued properties like `property Component windowComponent: Component { ... }`,
+  which are preserved as embedded child objects so the converter can traverse the full tree
 - multiline property expressions with balanced parentheses, brackets, and braces
 - `function` and `signal` declarations, which are skipped conservatively rather than modeled
 - resolved component source paths for child objects when the parser can map a type name to a
