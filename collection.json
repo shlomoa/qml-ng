@@ -5,6 +5,11 @@
       "description": "Generate an Angular standalone component from a QML file",
       "factory": "./dist/schematics/qml-component/index#qmlComponentSchematic",
       "schema": "./src/schematics/qml-component/schema.json"
+    },
+    "migrate-qml-component": {
+      "description": "Migrate an existing generated component to the current schema version",
+      "factory": "./dist/schematics/migrate-qml-component/index#migrateQmlComponentSchematic",
+      "schema": "./src/schematics/migrate-qml-component/schema.json"
     }
   }
 }

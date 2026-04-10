@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/schema",
+  "id": "MigrateQmlComponentSchema",
+  "title": "Migrate QML Component Options",
+  "type": "object",
+  "properties": {
+    "componentPath": {
+      "type": "string",
+      "description": "Path to the existing generated component directory"
+    },
+    "qmlFile": {
+      "type": "string",
+      "description": "Path to the source QML file"
+    },
+    "force": {
+      "type": "boolean",
+      "description": "Force regeneration even if schema version is current",
+      "default": false
+    }
+  },
+  "required": ["componentPath", "qmlFile"]
+}

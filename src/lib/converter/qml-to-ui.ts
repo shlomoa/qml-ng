@@ -2,7 +2,17 @@ import { QmlDocument, QmlObjectNode, QmlProperty } from '../qml/ast';
 import { lowerBinding } from './expression-lowering';
 import { isQmlHandlerName, mapQmlHandler } from './event-mapper';
 import { resolveLayout } from './layout-resolver';
-import { UiDocument, UiNode } from '../schema/ui-schema';
+import { UiDocument, UiNode, SCHEMA_VERSION, VersionInfo } from '../schema/ui-schema';
+
+// Import package.json version at runtime
+let packageVersion = '0.0.0';
+try {
+  // This will be resolved at runtime from the built dist location
+  packageVersion = require('../../package.json').version;
+} catch {
+  // Fallback if package.json is not accessible
+  packageVersion = '0.3.0';
+}
 
 function propertyMap(properties: QmlProperty[]): Map<string, QmlProperty> {
   return new Map(properties.map(p => [p.name, p]));
@@ -219,9 +229,16 @@ export function qmlNodeToUi(node: QmlObjectNode, diagnostics: string[]): UiNode 
 
 export function qmlToUiDocument(name: string, qml: QmlDocument): UiDocument {
   const diagnostics: string[] = [];
+  const version: VersionInfo = {
+    schemaVersion: SCHEMA_VERSION,
+    generatorVersion: packageVersion,
+    generatedAt: new Date().toISOString()
+  };
+
   return {
     name,
     root: qmlNodeToUi(qml.root, diagnostics),
-    diagnostics
+    diagnostics,
+    version
   };
 }

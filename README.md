@@ -6,7 +6,7 @@ A starter repository for converting a subset of [QML] into Angular standalone co
 
 - QML tokenizer and recursive parser
 - QML AST model
-- Canonical UI schema
+- Canonical UI schema with versioning support
 - Phase 3 semantic lowering:
   - expression lowering to Angular `computed(...)`
   - handler support like `onClicked:`
@@ -14,6 +14,8 @@ A starter repository for converting a subset of [QML] into Angular standalone co
 - Angular Material HTML / TS / SCSS renderer
 - automatic Material imports per generated component
 - Angular schematic collection with `qml-component`
+- Migration schematic for upgrading generated components
+- Versioning and deprecation tracking
 - simple CLI for local experimentation
 
 ## Example corpus
@@ -96,13 +98,37 @@ QML
 → tokenizer
 → recursive parser
 → QML AST
-→ canonical UI schema
+→ canonical UI schema (versioned)
 → semantic lowering
    - bindings
    - handlers
    - layout
 → Angular Material renderer
-→ schematic output
+→ schematic output (with version metadata)
 ```
+
+## Versioning and Migration
+
+qml-ng includes a comprehensive versioning strategy to support stable evolution:
+
+- **Generator version**: Follows semantic versioning (current: `0.3.0`)
+- **Schema version**: Tracks internal schema changes (current: `1.0`)
+- **Version metadata**: All generated components include version tracking
+- **Migration schematic**: Automated tool for updating existing components
+
+### Migrating Components
+
+To update an existing generated component to the current schema version:
+
+```bash
+ng generate qml-ng:migrate-qml-component \
+  --componentPath=src/app/login \
+  --qmlFile=examples/login.qml
+```
+
+### Documentation
+
+- [VERSIONING.md](./VERSIONING.md) - Complete versioning and migration strategy
+- [COMPATIBILITY.md](./COMPATIBILITY.md) - Output compatibility guarantees
 
 [QML]: https://doc.qt.io/qt-6/qmlreference.html
