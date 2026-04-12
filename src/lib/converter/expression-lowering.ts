@@ -49,17 +49,9 @@ export function lowerBinding(raw: string | number | boolean): LoweredExpression 
     };
   }
 
-  // Check if it's a simple literal (no operators or special chars)
-  // This is a fast path for common cases like "Button" or "submit"
-  const isSimpleLiteralPattern = /^[A-Za-z0-9 _-]+$/.test(trimmed) && !/[.()+\-/*]/.test(trimmed);
-  if (isSimpleLiteralPattern) {
-    return {
-      binding: { kind: 'literal', value: trimmed, dependencies: [] },
-      angularExpression: JSON.stringify(trimmed)
-    };
-  }
-
-  // Parse as expression
+  // Parse as expression using the full AST parser.
+  // This correctly distinguishes bare identifiers (signal reads like `label`)
+  // from literal values, and handles all operators and function calls.
   const parser = new ExpressionParser();
   const result = parser.parse(trimmed);
 

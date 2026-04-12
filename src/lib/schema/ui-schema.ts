@@ -28,6 +28,26 @@ export interface UiBinding {
   dependencies: string[];
 }
 
+/**
+ * A typed state declaration extracted from a QML property declaration.
+ * These map to Angular Signal declarations in the generated component.
+ *
+ * Examples:
+ *   `property int count: 0`      → `readonly count = signal<number>(0);`
+ *   `property string label: "x"` → `readonly label = signal<string>('x');`
+ *   `readonly property bool on`  → `readonly on = signal<boolean>(false);`
+ */
+export interface UiStateDeclaration {
+  name: string;
+  /** TypeScript type for the signal generic parameter, e.g. 'number', 'string', 'boolean', 'any' */
+  tsType: string;
+  /** The Angular/TypeScript expression used as the signal's initial value */
+  initialValue: string;
+  /** Whether the original QML property was declared readonly */
+  isReadonly: boolean;
+  location?: SourceRange;
+}
+
 export interface UiEvent {
   name: string;
   angularEvent: string;
@@ -49,6 +69,8 @@ export interface UiNode {
   layout?: UiLayout;
   events: UiEvent[];
   children: UiNode[];
+  /** Typed property declarations extracted from QML (e.g. `property int count: 0`). */
+  stateDeclarations?: UiStateDeclaration[];
   meta?: Record<string, unknown>;
   location?: SourceRange;
 }
