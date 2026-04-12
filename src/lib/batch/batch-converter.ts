@@ -8,6 +8,7 @@ import { componentClassName, dasherize } from '../naming';
 import { parseQmlWithDiagnostics } from '../qml/parser';
 import { UiDiagnostic, UiDocument } from '../schema/ui-schema';
 import { PerformanceTracker, ConversionMetrics } from '../perf/performance-tracker';
+import { FileCache, hashFile } from '../cache/file-cache';
 
 export type ConversionStatus = 'supported' | 'approximated' | 'unsupported';
 
@@ -44,6 +45,8 @@ export interface ConvertQmlFileOptions {
   componentName?: string;
   rootDir?: string;
   trackPerformance?: boolean;
+  cache?: FileCache;
+  skipUnchanged?: boolean;
 }
 
 function compareDiagnostics(left: UiDiagnostic, right: UiDiagnostic): number {
@@ -134,9 +137,44 @@ export function collectQmlFiles(dir: string, recursive = true): string[] {
 
 export function convertQmlFile(filePath: string, options: ConvertQmlFileOptions = {}): FileConversionResult {
   const tracker = options.trackPerformance ? new PerformanceTracker() : undefined;
+  const cache = options.cache;
+  const skipUnchanged = options.skipUnchanged ?? false;
+
+  // Check cache if enabled
+  if (cache && skipUnchanged) {
+    const cached = cache.get(filePath);
+    if (cached && cached.document) {
+      const currentHash = hashFile(filePath);
+      if (cached.sourceHash === currentHash) {
+        // File unchanged, use cached document
+        const rootDir = options.rootDir ?? path.dirname(filePath);
+        const componentName = options.componentName ?? componentNameFromFile(filePath);
+        const relativeSourcePath = normalizeRelativePath(path.relative(rootDir, filePath));
+
+        tracker?.startStage('render');
+        const rendered = renderAngularMaterial(cached.document, componentClassName(componentName));
+        tracker?.endStage();
+
+        return {
+          sourceFile: filePath,
+          relativeSourcePath,
+          componentName,
+          className: componentClassName(componentName),
+          document: cached.document,
+          diagnostics: cached.document.diagnostics,
+          rendered,
+          generatedFiles: createGeneratedFiles(relativeSourcePath, componentName, rendered),
+          status: classifyConversion(cached.document.diagnostics),
+          strictViolation: hasStrictModeViolations(cached.document.diagnostics),
+          performanceMetrics: tracker ? tracker.generateReport(1) : undefined
+        };
+      }
+    }
+  }
 
   tracker?.startStage('read');
   const source = fs.readFileSync(filePath, 'utf8');
+  const sourceHash = hashFile(filePath);
   tracker?.endStage();
 
   const rootDir = options.rootDir ?? path.dirname(filePath);
@@ -153,6 +191,19 @@ export function convertQmlFile(filePath: string, options: ConvertQmlFileOptions 
   const document = qmlToUiDocument(componentName, parseResult.document, filePath);
   const diagnostics = [...parseResult.diagnostics, ...document.diagnostics].sort(compareDiagnostics);
   tracker?.endStage();
+
+  // Cache the parsed results
+  if (cache) {
+    cache.set(filePath, {
+      sourceHash,
+      timestamp: Date.now(),
+      ast: parseResult.document,
+      document: {
+        ...document,
+        diagnostics
+      }
+    });
+  }
 
   tracker?.startStage('render');
   const rendered = renderAngularMaterial(
@@ -187,14 +238,18 @@ export function convertQmlFile(filePath: string, options: ConvertQmlFileOptions 
 export interface ConvertDirectoryOptions {
   recursive?: boolean;
   trackPerformance?: boolean;
+  cache?: FileCache;
+  skipUnchanged?: boolean;
 }
 
 export function convertDirectory(dir: string, options: ConvertDirectoryOptions = {}): FileConversionResult[] {
   const recursive = options.recursive ?? true;
   const trackPerformance = options.trackPerformance ?? false;
+  const cache = options.cache;
+  const skipUnchanged = options.skipUnchanged ?? false;
 
   return collectQmlFiles(dir, recursive)
-    .map(filePath => convertQmlFile(filePath, { rootDir: dir, trackPerformance }));
+    .map(filePath => convertQmlFile(filePath, { rootDir: dir, trackPerformance, cache, skipUnchanged }));
 }
 
 export function summarizeBatch(results: FileConversionResult[]): BatchSummary {

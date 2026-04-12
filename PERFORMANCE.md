@@ -17,6 +17,29 @@ The converter tracks timing and memory usage across all pipeline stages:
 - **Schema Conversion**: QML AST to intermediate UI schema
 - **Render**: Angular Material code generation
 
+### Incremental Regeneration
+
+The converter supports incremental regeneration via file caching:
+
+- Files are hashed to detect changes
+- Unchanged files skip parsing and schema conversion (only re-render)
+- AST and schema documents are cached to disk and memory
+- Cache is persistent across runs
+
+Enable caching with `--cache` and `--skip-unchanged` flags:
+
+```bash
+# First run: full processing
+node dist/cli.js examples/login.qml --cache --skip-unchanged --perf
+
+# Second run: skip unchanged files (much faster)
+node dist/cli.js examples/login.qml --cache --skip-unchanged --perf
+```
+
+Performance improvement from caching:
+- First run: ~13ms (read + parse + schema-conversion + render)
+- Second run: ~9ms (render only, ~30% faster)
+
 #### Single File with Performance Tracking
 
 ```bash
@@ -62,10 +85,9 @@ node dist/cli.js examples/FigmaVariants --batch --perf --dry-run
 
 Features:
 - Recursive directory scanning for `.qml` files
-- Progress reporting during conversion
-- Continue-on-error behavior (processes all files even if some fail)
+- Sequential file processing
 - Aggregate performance metrics across all files
-- Error summary
+- Comprehensive diagnostics reporting
 
 #### Batch Output Example
 
@@ -144,9 +166,10 @@ Based on benchmarking typical QML files:
 
 ### Memory Behavior
 
-- Memory-bounded processing suitable for large batches
+- Sequential processing to manage memory usage
 - Typical per-file memory overhead: <1MB
-- Peak memory scales sub-linearly with batch size (due to GC)
+- Results accumulate in memory during batch processing
+- Peak memory usage tracked per-stage and across batches
 
 ### Scalability
 
@@ -158,27 +181,38 @@ The converter is designed for production-scale workloads:
 
 ## API Usage
 
-### Programmatic Batch Conversion
+### Programmatic Batch Conversion with Caching
 
 ```typescript
 import { convertQmlFile, convertDirectory, summarizeBatch } from 'qml-ng/lib/batch/batch-converter';
 import { PerformanceTracker } from 'qml-ng/lib/perf/performance-tracker';
+import { FileCache } from 'qml-ng/lib/cache/file-cache';
 
-// Convert a single file with performance tracking
+// Create a cache instance
+const cache = new FileCache({
+  cacheDir: '.qml-ng-cache', // optional, defaults to .qml-ng-cache
+  enabled: true              // optional, defaults to true
+});
+
+// Convert a single file with caching
 const result = convertQmlFile('path/to/file.qml', {
   componentName: 'MyComponent',
   rootDir: 'path/to/project',
-  trackPerformance: true
+  trackPerformance: true,
+  cache,
+  skipUnchanged: true
 });
 
 if (result.performanceMetrics) {
   console.log(PerformanceTracker.formatReport(result.performanceMetrics));
 }
 
-// Convert a directory
+// Convert a directory with caching
 const results = convertDirectory('path/to/qml/directory', {
   recursive: true,
-  trackPerformance: true
+  trackPerformance: true,
+  cache,
+  skipUnchanged: true
 });
 
 // Summarize batch results
@@ -186,6 +220,10 @@ const summary = summarizeBatch(results);
 if (summary.performanceMetrics) {
   console.log(PerformanceTracker.formatReport(summary.performanceMetrics));
 }
+
+// Cache management
+console.log(cache.getStats()); // { memoryEntries: 5, diskEntries: 5 }
+cache.clear(); // Clear all cached entries
 ```
 
 ### Performance Tracker API
@@ -203,15 +241,29 @@ const metrics = tracker.generateReport(fileCount);
 console.log(PerformanceTracker.formatReport(metrics));
 ```
 
-## Future Improvements
+## Current Limitations and Future Work
 
-Planned enhancements for production quality:
+The current implementation provides foundational performance instrumentation but has known limitations:
 
-1. **Caching**: Cache parsed ASTs and intermediate schemas
-2. **Incremental Regeneration**: Detect and skip unchanged files
-3. **Parallel Processing**: Process multiple files concurrently
-4. **Memory Streaming**: Stream large files instead of loading entirely
-5. **Hot Paths**: Optimize parsing and schema conversion hot paths
+### Not Yet Implemented
+
+1. **Memory-Bounded Streaming**: Results accumulate in memory; no streaming write strategy
+2. **Progress Callbacks**: No real-time progress reporting during batch operations
+3. **Parallel Processing**: Sequential processing only; no concurrent file handling
+
+### Recently Implemented
+
+1. **✅ Incremental Regeneration**: Hash-based change detection with `--cache` and `--skip-unchanged`
+2. **✅ AST/Schema Caching**: Persistent caching of parsed ASTs and lowered schemas
+
+### Planned Enhancements
+
+These features are planned for future production-quality releases:
+
+1. **Streaming Results**: Write results immediately instead of accumulating in memory
+2. **Parallel Batch Processing**: Process multiple files concurrently with configurable concurrency
+3. **Hot Path Optimization**: Profile and optimize parsing and schema conversion bottlenecks
+4. **Progress Reporting**: Real-time progress callbacks for batch operations
 
 ## Related Documentation
 
