@@ -1,6 +1,6 @@
 import { lowerBinding } from '../converter/expression-lowering';
 import { layoutToScss } from '../converter/layout-resolver';
-import { UiBinding, UiDocument, UiNode } from '../schema/ui-schema';
+import { UiBinding, UiDocument, UiNode, UiStateDeclaration } from '../schema/ui-schema';
 import { collectMaterialImports } from './material-imports';
 
 export interface RenderedAngularComponent {
@@ -13,6 +13,8 @@ interface RenderContext {
   computedDeclarations: string[];
   signalDeclarations: string[];
   dependencyNames: Set<string>;
+  /** Names of signals already declared via typed property declarations */
+  declaredSignalNames: Set<string>;
   exprCounter: number;
 }
 
@@ -23,8 +25,14 @@ function bindingLiteralOrExpr(binding: UiBinding | undefined, fieldPrefix: strin
     return JSON.stringify(binding.value ?? '');
   }
 
-  binding.dependencies.forEach(d => ctx.dependencyNames.add(d));
+  // Re-lower the expression through the full AST path here rather than relying on
+  // `binding.dependencies` because the initial binding may have been built before
+  // the AST-based pipeline was unified — regex-based extraction (used in
+  // BindingLoweringPass.ensureProperBinding) does not respect string quote contexts
+  // and would incorrectly include string literal content (e.g. "Reset", "Start")
+  // as signal dependencies.  Re-lowering is cheap and guarantees correct deps.
   const lowered = lowerBinding(binding.expression ?? '');
+  lowered.binding.dependencies.forEach(d => ctx.dependencyNames.add(d));
   const fieldName = `${fieldPrefix}Expr${++ctx.exprCounter}`;
   ctx.computedDeclarations.push(`readonly ${fieldName} = computed(() => ${lowered.angularExpression});`);
   return `${fieldName}()`;
@@ -109,25 +117,76 @@ function collectLayoutScss(node: UiNode, level = 0): string[] {
   return rules;
 }
 
+/**
+ * Recursively collect all UiStateDeclaration objects from a node tree.
+ * Declarations are de-duplicated by name (first occurrence wins).
+ */
+function collectStateDeclarations(node: UiNode): UiStateDeclaration[] {
+  const seen = new Set<string>();
+  const result: UiStateDeclaration[] = [];
+
+  function visit(n: UiNode): void {
+    for (const decl of n.stateDeclarations ?? []) {
+      if (!seen.has(decl.name)) {
+        seen.add(decl.name);
+        result.push(decl);
+      }
+    }
+    n.children.forEach(visit);
+  }
+
+  visit(node);
+  return result;
+}
+
+/**
+ * Emit an Angular signal declaration line for a typed property.
+ *
+ * `property int count: 0`          → `readonly count = signal<number>(0);`
+ * `readonly property string label` → `readonly label = signal<string>('');`
+ */
+function stateDeclarationToTs(decl: UiStateDeclaration): string {
+  return `readonly ${decl.name} = signal<${decl.tsType}>(${decl.initialValue});`;
+}
+
 export function renderAngularMaterial(doc: UiDocument, className: string): RenderedAngularComponent {
+  // Collect typed property declarations from the whole tree first so the
+  // renderer knows which signal names are already declared.
+  const typedDeclarations = collectStateDeclarations(doc.root);
+  const declaredSignalNames = new Set(typedDeclarations.map(d => d.name));
+
   const ctx: RenderContext = {
     computedDeclarations: [],
     signalDeclarations: [],
     dependencyNames: new Set<string>(),
+    declaredSignalNames,
     exprCounter: 0
   };
 
   const html = renderNode(doc.root, ctx);
   const materialImports = collectMaterialImports(doc.root);
-  const ngImports = [
-    'Component',
-    'computed',
-    ...(ctx.dependencyNames.size ? ['signal'] : [])
-  ];
 
-  for (const dep of [...ctx.dependencyNames].sort()) {
+  // Typed property declarations → `signal<T>(initialValue)`
+  const typedSignalLines = typedDeclarations
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map(stateDeclarationToTs);
+
+  // Expression dependencies NOT already declared via typed properties
+  // → fallback `signal<any>(null)` so templates compile
+  const undeclaredDeps = [...ctx.dependencyNames]
+    .filter(dep => !declaredSignalNames.has(dep))
+    .sort();
+  for (const dep of undeclaredDeps) {
     ctx.signalDeclarations.push(`readonly ${dep} = signal<any>(null);`);
   }
+
+  const needsSignal = typedSignalLines.length > 0 || ctx.signalDeclarations.length > 0;
+  const needsComputed = ctx.computedDeclarations.length > 0;
+  const ngImports = [
+    'Component',
+    ...(needsComputed ? ['computed'] : []),
+    ...(needsSignal ? ['signal'] : [])
+  ];
 
   const angularMaterialImportMap: Record<string, string> = {
     MatButtonModule: '@angular/material/button',
@@ -151,6 +210,7 @@ export function renderAngularMaterial(doc: UiDocument, className: string): Rende
     `  styleUrl: './${doc.name}.component.scss'`,
     '})',
     `export class ${className} {`,
+    ...typedSignalLines.map(s => `  ${s}`),
     ...ctx.signalDeclarations.map(s => `  ${s}`),
     ...ctx.computedDeclarations.map(s => `  ${s}`),
     '}',

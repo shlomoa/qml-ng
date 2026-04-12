@@ -1,5 +1,5 @@
 import { QmlDocument, QmlObjectNode, QmlProperty, QmlHandler } from '../qml/ast';
-import { UiDocument, UiNode, UiDiagnostic, createDiagnostic, SourceRange } from '../schema/ui-schema';
+import { UiDocument, UiNode, UiDiagnostic, UiStateDeclaration, createDiagnostic, SourceRange } from '../schema/ui-schema';
 import {
   PassContext,
   PassPipeline,
@@ -11,13 +11,14 @@ import {
   DiagnosticsEnrichmentPass
 } from '../passes';
 import { resolveLayout } from './layout-resolver';
+import { lowerBinding as lowerBindingAst } from './expression-lowering';
 
 /**
  * Legacy function for backward compatibility.
- * Use BindingLoweringPass.lowerBinding instead.
+ * Delegates to the AST-based expression lowering.
  */
 export function lowerBinding(raw: string | number | boolean) {
-  return BindingLoweringPass.lowerBinding(raw);
+  return lowerBindingAst(raw);
 }
 
 /**
@@ -48,6 +49,93 @@ function propertyText(properties: QmlProperty[], name: string): string | undefin
   if (value.kind === 'array') return '[]'; // Simplified
   if (value.kind === 'binding') return value.expression;
   return value.value;
+}
+
+/**
+ * Maps a QML primitive type name to the corresponding TypeScript type.
+ * Used for generating typed signal declarations like `signal<number>(0)`.
+ */
+function qmlTypeToTs(qmlType: string): string {
+  switch (qmlType) {
+    case 'int':
+    case 'real':
+    case 'double':
+    case 'float':
+      return 'number';
+    case 'string':
+    case 'url':
+    case 'color':
+      return 'string';
+    case 'bool':
+      return 'boolean';
+    default:
+      return 'any';
+  }
+}
+
+/**
+ * Converts a QmlValue to a TypeScript/Angular initial value expression string.
+ * For identifier values (property references), the value is lowered as an
+ * expression so that signal reads are written correctly (e.g. `otherProp()`).
+ */
+function qmlValueToInitializer(value: QmlProperty['value']): string {
+  switch (value.kind) {
+    case 'string':
+      return JSON.stringify(value.value);
+    case 'number':
+      return String(value.value);
+    case 'identifier':
+      if (value.value === 'true' || value.value === 'false') {
+        return value.value;
+      }
+      // Treat bare identifier as an expression — the lowering will rewrite it as
+      // a signal read (e.g. `otherProp()`), which is the correct QML semantics.
+      return lowerBindingAst(value.value).angularExpression;
+    case 'expression':
+    case 'binding':
+      return lowerBindingAst(value.kind === 'binding' ? value.expression : value.value).angularExpression;
+    case 'array':
+      return '[]';
+  }
+}
+
+/**
+ * Extracts typed QML property declarations (e.g. `property int count: 0`) as
+ * UiStateDeclaration objects that the renderer will emit as `signal<T>(value)`.
+ *
+ * Simple handler-like properties (onFoo) and well-known visual properties are
+ * excluded because they are handled by other parts of the pipeline.
+ */
+function extractStateDeclarations(properties: QmlProperty[]): UiStateDeclaration[] {
+  const declarations: UiStateDeclaration[] = [];
+  for (const prop of properties) {
+    if (prop.propertyKind !== 'typed' && prop.propertyKind !== 'readonly') {
+      continue;
+    }
+    // Skip handler-like names and embedded-object properties
+    if (prop.name.startsWith('on') || prop.embeddedObject) {
+      continue;
+    }
+    // Skip complex / unsupported type references.
+    // QML primitive types ('int', 'real', 'string', 'bool', 'url', 'color', 'var') are
+    // all lowercase; component/object types (e.g. 'Window', 'MyButton') start with an
+    // uppercase letter and require full component-resolution support which is out of scope
+    // for v1.0 signal lowering.  Using the capitalisation convention is a reliable
+    // heuristic for all standard QML types; any unusual custom types that are lowercase
+    // will fall through to 'any'.
+    const typeName = prop.typeName ?? '';
+    if (typeName && /^[A-Z]/.test(typeName)) {
+      continue;
+    }
+    declarations.push({
+      name: prop.name,
+      tsType: qmlTypeToTs(typeName),
+      initialValue: qmlValueToInitializer(prop.value),
+      isReadonly: prop.propertyKind === 'readonly',
+      location: prop.location
+    });
+  }
+  return declarations;
 }
 
 function collectChildObjects(node: QmlObjectNode): QmlObjectNode[] {
@@ -147,14 +235,18 @@ function buildInitialNode(
   const kind = StructuralNormalizationPass.classifyNodeKind(node.typeName);
   const childNodes = children(collectChildObjects(node), diagnostics, filePath);
 
+  // Extract typed property declarations (e.g. `property int count: 0`)
+  const stateDeclarations = extractStateDeclarations(node.properties);
+
   // Common properties for all nodes
-  const baseNode = {
+  const baseNode: UiNode = {
     kind,
     name: node.typeName,
     layout,
     events,
     children: childNodes,
-    location: node.location
+    location: node.location,
+    ...(stateDeclarations.length > 0 ? { stateDeclarations } : {})
   };
 
   // Add type-specific properties
