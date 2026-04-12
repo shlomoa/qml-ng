@@ -41,8 +41,16 @@ function bindingLiteralOrExpr(binding: UiBinding | undefined, fieldPrefix: strin
   // as signal dependencies.  Re-lowering is cheap and guarantees correct deps.
   const lowered = lowerBinding(binding.expression ?? '');
   lowered.binding.dependencies.forEach(d => ctx.dependencyNames.add(d));
+  let classExpression = lowered.angularExpression;
+  if (binding.expression) {
+    const parser = new ExpressionParser();
+    const result = parser.parse(binding.expression);
+    if (result.ast && result.errors.length === 0) {
+      classExpression = generateComponentExpression(result.ast, new Set(lowered.binding.dependencies));
+    }
+  }
   const fieldName = `${fieldPrefix}Expr${++ctx.exprCounter}`;
-  ctx.computedDeclarations.push(`readonly ${fieldName} = computed(() => ${lowered.angularExpression});`);
+  ctx.computedDeclarations.push(`readonly ${fieldName} = computed(() => ${classExpression});`);
   return `${fieldName}()`;
 }
 
@@ -62,33 +70,33 @@ function isAllowedHandlerCallee(callee: string): boolean {
   return ALLOWED_HANDLER_CALLEE_PREFIXES.some(prefix => callee.startsWith(prefix));
 }
 
-function generateComponentMethodExpression(ast: ExpressionNode, declaredSignalNames: Set<string>): string {
+function generateComponentExpression(ast: ExpressionNode, signalNames: Set<string>): string {
   switch (ast.kind) {
     case 'literal':
       return JSON.stringify(ast.value);
 
     case 'identifier':
-      return declaredSignalNames.has(ast.name) ? `this.${ast.name}()` : ast.name;
+      return signalNames.has(ast.name) ? `this.${ast.name}()` : ast.name;
 
     case 'memberAccess':
-      return `${generateComponentMethodExpression(ast.object, declaredSignalNames)}${ast.optional ? '?.' : '.'}${ast.property}`;
+      return `${generateComponentExpression(ast.object, signalNames)}${ast.optional ? '?.' : '.'}${ast.property}`;
 
     case 'call':
-      return `${generateComponentMethodExpression(ast.callee, declaredSignalNames)}(${ast.arguments
-        .map(argument => generateComponentMethodExpression(argument, declaredSignalNames))
+      return `${generateComponentExpression(ast.callee, signalNames)}(${ast.arguments
+        .map(argument => generateComponentExpression(argument, signalNames))
         .join(', ')})`;
 
     case 'unaryOp':
-      return `${ast.operator}${generateComponentMethodExpression(ast.argument, declaredSignalNames)}`;
+      return `${ast.operator}${generateComponentExpression(ast.argument, signalNames)}`;
 
     case 'binaryOp':
-      return `${generateComponentMethodExpression(ast.left, declaredSignalNames)} ${ast.operator} ${generateComponentMethodExpression(ast.right, declaredSignalNames)}`;
+      return `${generateComponentExpression(ast.left, signalNames)} ${ast.operator} ${generateComponentExpression(ast.right, signalNames)}`;
 
     case 'conditional':
-      return `${generateComponentMethodExpression(ast.test, declaredSignalNames)} ? ${generateComponentMethodExpression(ast.consequent, declaredSignalNames)} : ${generateComponentMethodExpression(ast.alternate, declaredSignalNames)}`;
+      return `${generateComponentExpression(ast.test, signalNames)} ? ${generateComponentExpression(ast.consequent, signalNames)} : ${generateComponentExpression(ast.alternate, signalNames)}`;
 
     case 'array':
-      return `[${ast.elements.map(element => generateComponentMethodExpression(element, declaredSignalNames)).join(', ')}]`;
+      return `[${ast.elements.map(element => generateComponentExpression(element, signalNames)).join(', ')}]`;
   }
 }
 
@@ -107,7 +115,7 @@ function renderAssignmentMethod(event: UiEvent, ctx: RenderContext): string {
       const hasUnverifiedIdentifiers = [...dependencyInfo.identifiers].some(identifier => !ctx.declaredSignalNames.has(identifier));
       const usesUnsupportedCallee = [...dependencyInfo.callees].some(callee => !isAllowedHandlerCallee(callee));
       if (!hasUnverifiedIdentifiers && !usesUnsupportedCallee) {
-        const valueExpression = generateComponentMethodExpression(result.ast, ctx.declaredSignalNames);
+        const valueExpression = generateComponentExpression(result.ast, ctx.declaredSignalNames);
         return [
           `  ${event.generatedMethod.name}(): void {`,
           `    this.${model.target}.set(${valueExpression});`,

@@ -1,0 +1,3 @@
+warning:UNSUPPORTED_TYPE:QML type 'SvgPathItem' is not supported in qml-ng v1.0. This element will be skipped or rendered as a placeholder.
+warning:UNKNOWN_TYPE:Unsupported QML type: SvgPathItem. Converting as generic container.
+warning:UNSUPPORTED_TYPE:QML type 'SvgPathItem' is not supported in qml-ng v1.0. This element will be skipped or rendered as a placeholder.
