@@ -132,9 +132,9 @@ Supported handler patterns:
 - **`onPressed: handler()`** ⚠️ → `(mousedown)="handler()"`
 
 Handler body support:
-- **Single function call**: ✅ Fully supported
-- **Simple assignment**: ⚠️ Limited (e.g., `property = value`)
-- **Complex imperative JS**: ❌ Out of scope for v1.0
+- **Single function call**: ✅ Fully supported as inline Angular template events
+- **Simple assignment**: ⚠️ Lowered through generated component methods/stubs instead of inline template code
+- **Complex imperative JS**: ❌ Out of scope for v1.0 and reported with diagnostics
 
 Diagnostic: Multi-statement handlers produce warning with placeholder
 

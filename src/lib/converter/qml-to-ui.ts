@@ -171,7 +171,8 @@ function handlersToEvents(handlers: QmlHandler[]) {
     return {
       name: h.name,
       angularEvent,
-      handler: h.body
+      handler: h.body,
+      location: h.location
     };
   });
 }
@@ -194,7 +195,7 @@ export function qmlNodeToUi(
   // Combine property-based handlers and explicit handlers
   const propertyHandlers = node.properties
     .filter(p => HandlerLoweringPass.isQmlHandlerName(p.name))
-    .map(p => HandlerLoweringPass.mapQmlHandler(p.name, qmlValueToHandler(p.value)));
+    .map(p => HandlerLoweringPass.mapQmlHandler(p.name, qmlValueToHandler(p.value), p.location));
 
   const explicitHandlers = handlersToEvents(node.handlers);
   const events = [...propertyHandlers, ...explicitHandlers];

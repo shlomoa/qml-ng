@@ -48,10 +48,25 @@ export interface UiStateDeclaration {
   location?: SourceRange;
 }
 
+export type UiHandlerBehavior = 'inline' | 'method' | 'unsupported';
+
+export type UiHandlerModel =
+  | { kind: 'call'; expression: string }
+  | { kind: 'assignment'; target: string; value: string }
+  | { kind: 'unsupported'; reason: string };
+
+export interface UiGeneratedMethod {
+  name: string;
+}
+
 export interface UiEvent {
   name: string;
   angularEvent: string;
   handler: string;
+  behavior?: UiHandlerBehavior;
+  handlerModel?: UiHandlerModel;
+  generatedMethod?: UiGeneratedMethod;
+  location?: SourceRange;
 }
 
 export interface UiLayout {
