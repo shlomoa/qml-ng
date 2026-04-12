@@ -126,7 +126,7 @@ export class AngularTypeScriptRenderer implements TypeScriptRenderer {
       'Component',
       ...(needsComputed ? ['computed'] : []),
       ...(needsSignal ? ['signal'] : [])
-    ];
+    ].sort((left, right) => left.localeCompare(right));
     const componentImports = this.importsResolver.collectComponentImports(doc.root);
     const renderedImportStatements = this.importsResolver.renderImportStatements(componentImports).join('\n');
 

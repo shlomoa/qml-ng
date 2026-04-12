@@ -4,7 +4,9 @@ import { isFlowLayoutContainer, suppressAbsolutePositioning } from '../layout/la
 import { UiBinding, UiNode } from '../schema/ui-schema';
 import { DiagnosticsEmitter, RenderContext } from './renderer-contract';
 
-const SAFE_COMPUTED_EXPRESSION_PATTERN = /^[\w\s.$()[\]?:"',+\-*/%<>=!&|]+$/;
+const ANGULAR_EXPRESSION_ALLOWLIST_PATTERN = /^[\w\s.$()[\]?:"',+\-*/%<>=!&|]+$/;
+const UNSAFE_EXPRESSION_COMMENT =
+  '/* TODO(qml-ng): Unsupported binding expression contains characters outside the Angular expression allowlist (for example backticks, semicolons, or braces) and needs manual review. */';
 
 export type UiNodeMappingCategory = 'supported' | 'approximated' | 'unsupported';
 export type UiNodeRendererKind = 'angular' | 'material' | 'placeholder' | 'none';
@@ -43,13 +45,13 @@ export interface UiNodeRenderRule {
 }
 
 function sanitizeAngularComputedExpression(expression: string): { expression: string; comment?: string } {
-  if (SAFE_COMPUTED_EXPRESSION_PATTERN.test(expression)) {
+  if (ANGULAR_EXPRESSION_ALLOWLIST_PATTERN.test(expression)) {
     return { expression };
   }
 
   return {
     expression: 'undefined',
-    comment: '/* TODO(qml-ng): Unsupported binding expression sanitized during Angular emission. */'
+    comment: UNSAFE_EXPRESSION_COMMENT
   };
 }
 
@@ -192,8 +194,10 @@ function renderButton(node: UiNode, context: RenderContext, _diagnosticsEmitter:
   return `<button mat-raised-button${renderStyleAttribute(node, parent)}${renderEvents(node, context)}>{{ ${textExpr} }}</button>`;
 }
 
-function renderAnimation(): string {
-  return '';
+function renderAnimation(node: UiNode): string {
+  return node.name
+    ? `<!-- qml-ng: ignored ${node.name.replace(/--/g, '—').trim()} node. -->`
+    : '';
 }
 
 function renderUnknown(node: UiNode, _context: RenderContext, diagnosticsEmitter: DiagnosticsEmitter): string {

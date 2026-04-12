@@ -44,12 +44,8 @@ export class DiagnosticsEnrichmentPass implements LoweringPass {
       // but might indicate a mistake
     }
 
-    // Recursively process children
-    const processedChildren = node.children.map(child => this.transform(child, context));
-
     return {
-      ...node,
-      children: processedChildren
+      ...node
     };
   }
 

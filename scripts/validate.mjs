@@ -1,4 +1,6 @@
+import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -62,6 +64,22 @@ function assertNotContains(text, snippet, label) {
   if (text.includes(snippet)) {
     throw new Error(`Expected ${label} not to contain:\n${snippet}`);
   }
+}
+
+function runCli(args, expectedStatus = 0) {
+  const cliPath = path.join(repoRoot, 'dist', 'cli.js');
+  const result = spawnSync(process.execPath, [cliPath, ...args], {
+    cwd: repoRoot,
+    encoding: 'utf8'
+  });
+
+  if (result.status !== expectedStatus) {
+    throw new Error(
+      `Expected CLI exit code ${expectedStatus}, got ${result.status}\nSTDOUT:\n${result.stdout}\nSTDERR:\n${result.stderr}`
+    );
+  }
+
+  return result;
 }
 
 function formatDiagnostics(document) {
@@ -255,12 +273,12 @@ function validateRendererContract(mods) {
   assertContains(html, 'class="qml-window"', 'renderer contract HTML');
   assertContains(html, 'class="qml-image"', 'renderer contract HTML');
   assertContains(html, `[src]='"assets/logo.png"'`, 'renderer contract HTML');
+  assertContains(html, '(click)="handleClickL10C7()"', 'renderer contract HTML');
   assertContains(html, '<mat-form-field appearance="outline">', 'renderer contract HTML');
-  assertContains(html, '(click)="handleClick1()"', 'renderer contract HTML');
   assertContains(ts, 'standalone: true,', 'renderer contract TypeScript');
   assertContains(ts, 'imports: [MatButtonModule, MatFormFieldModule, MatInputModule],', 'renderer contract TypeScript');
   assertContains(ts, 'readonly currentIndex = signal<number>(0);', 'renderer contract TypeScript');
-  assertContains(ts, 'handleClick1(): void {', 'renderer contract TypeScript');
+  assertContains(ts, 'handleClickL10C7(): void {', 'renderer contract TypeScript');
   assertContains(scss, '.qml-window {', 'renderer contract SCSS');
 }
 
@@ -366,6 +384,36 @@ function validateEventModelCase(mods, testCase) {
       );
     }
   }
+}
+
+function validateCliModes() {
+  const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), 'qml-ng-cli-fixture-'));
+  const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'qml-ng-cli-output-'));
+
+  fs.writeFileSync(
+    path.join(fixtureDir, 'Supported.qml'),
+    'Item {\n  Text {\n    text: "Hello"\n  }\n}\n'
+  );
+  fs.writeFileSync(
+    path.join(fixtureDir, 'Unsupported.qml'),
+    'Item {\n  Timeline {}\n}\n'
+  );
+
+  const dryRun = runCli([fixtureDir, '--dry-run', '--verbose']);
+  assertContains(dryRun.stdout, 'SUPPORTED Supported.qml', 'CLI batch dry-run');
+  assertContains(dryRun.stdout, 'UNSUPPORTED Unsupported.qml', 'CLI batch dry-run');
+  assertContains(
+    dryRun.stdout,
+    `${path.join(fixtureDir, 'Unsupported.qml')}:2:12 WARNING`,
+    'CLI verbose diagnostics'
+  );
+  assertContains(dryRun.stdout, 'Summary:', 'CLI batch summary');
+
+  const diff = runCli([fixtureDir, '--output-dir', outputDir, '--diff']);
+  assertContains(diff.stdout, `+++ ${path.join(outputDir, 'supported', 'supported.component.ts')}`, 'CLI diff mode');
+
+  const strict = runCli([fixtureDir, '--dry-run', '--strict'], 1);
+  assertContains(strict.stderr, 'Strict mode failed', 'CLI strict mode');
 }
 
 const mods = await loadBuiltModules();
@@ -476,11 +524,11 @@ const renderedCases = [
     source: `Item {\n  property int currentIndex: 0\n  Button {\n    text: "Go"\n    onClicked: currentIndex = 1\n  }\n}`,
     componentName: 'assignment-handler-sample',
     className: 'AssignmentHandlerSampleComponent',
-    htmlContains: ['(click)="handleClick1()"'],
+    htmlContains: ['(click)="handleClickL5C5()"'],
     htmlNotContains: ['currentIndex = 1'],
     tsContains: [
       'readonly currentIndex = signal<number>(0);',
-      'handleClick1(): void {',
+      'handleClickL5C5(): void {',
       'this.currentIndex.set(1);'
     ],
     diagnosticsContains: ['HANDLER_METHOD_STUB']
@@ -543,6 +591,9 @@ for (const testCase of eventModelCases) {
   console.log(`Modeling ${testCase.label}...`);
   validateEventModelCase(mods, testCase);
 }
+
+console.log('Validating CLI developer-experience modes...');
+validateCliModes();
 
 if (failures.length) {
   const message = failures
