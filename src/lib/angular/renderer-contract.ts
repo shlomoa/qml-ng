@@ -18,7 +18,7 @@ export interface RenderContext {
   /** De-duplication set paired with requiredGeneratedMethods. */
   requiredGeneratedMethodNames: Set<string>;
   /** Monotonic counter used to create deterministic computed field names. */
-  exprCounter: number;
+  computedExpressionCounter: number;
 }
 
 export interface ImportsResolver {
@@ -67,6 +67,6 @@ export function createRenderContext(declaredSignalNames: Set<string>): RenderCon
     declaredSignalNames,
     requiredGeneratedMethods: [],
     requiredGeneratedMethodNames: new Set<string>(),
-    exprCounter: 0
+    computedExpressionCounter: 0
   };
 }

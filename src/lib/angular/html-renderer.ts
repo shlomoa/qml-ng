@@ -2,10 +2,10 @@ import { lowerBinding } from '../converter/expression-lowering';
 import { UiBinding, UiEvent, UiNode } from '../schema/ui-schema';
 import { DiagnosticsEmitter, HtmlRenderer, RenderContext } from './renderer-contract';
 
-const SAFE_ANGULAR_EXPRESSION_PATTERN = /^[\w\s.$()[\]?:"',+\-*/%<>=!&|]+$/;
+const ALLOWED_ANGULAR_COMPUTED_EXPRESSION_PATTERN = /^[\w\s.$()[\]?:"',+\-*/%<>=!&|]+$/;
 
 function sanitizeAngularComputedExpression(expression: string): string {
-  return SAFE_ANGULAR_EXPRESSION_PATTERN.test(expression) ? expression : 'undefined';
+  return ALLOWED_ANGULAR_COMPUTED_EXPRESSION_PATTERN.test(expression) ? expression : 'undefined';
 }
 
 function bindingLiteralOrExpr(binding: UiBinding | undefined, fieldPrefix: string, context: RenderContext): string {
@@ -17,7 +17,7 @@ function bindingLiteralOrExpr(binding: UiBinding | undefined, fieldPrefix: strin
 
   const lowered = lowerBinding(binding.expression ?? '');
   lowered.binding.dependencies.forEach(dependency => context.dependencyNames.add(dependency));
-  const fieldName = `${fieldPrefix}Expr${++context.exprCounter}`;
+  const fieldName = `${fieldPrefix}Expr${++context.computedExpressionCounter}`;
   const angularExpression = sanitizeAngularComputedExpression(lowered.angularExpression);
   context.computedDeclarations.push(`readonly ${fieldName} = computed(() => ${angularExpression});`);
   return `${fieldName}()`;

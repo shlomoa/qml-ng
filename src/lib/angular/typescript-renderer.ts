@@ -131,6 +131,8 @@ export class AngularTypeScriptRenderer implements TypeScriptRenderer {
     const renderedImportStatements = this.importsResolver.renderImportStatements(componentImports).join('\n');
 
     return [
+      // Angular core imports stay local to the TypeScript renderer because they are
+      // driven by emitted class features (`computed`, `signal`) rather than node-kind mappings.
       `import { ${ngImports.join(', ')} } from '@angular/core';`,
       renderedImportStatements,
       '',
