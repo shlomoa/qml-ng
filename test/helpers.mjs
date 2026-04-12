@@ -65,46 +65,47 @@ export function assertSnapshot(relativePath, actual) {
 }
 
 export function compileGeneratedComponent(componentName, rendered) {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'qml-ng-generated-component-'));
-  const componentBase = path.join(tmpDir, `${componentName}.component`);
+  let tmpDir;
+  try {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'qml-ng-generated-component-'));
+    const componentBase = path.join(tmpDir, `${componentName}.component`);
 
-  fs.writeFileSync(`${componentBase}.ts`, rendered.ts);
-  fs.writeFileSync(`${componentBase}.html`, rendered.html);
-  fs.writeFileSync(`${componentBase}.scss`, rendered.scss);
+    fs.writeFileSync(`${componentBase}.ts`, rendered.ts);
+    fs.writeFileSync(`${componentBase}.html`, rendered.html);
+    fs.writeFileSync(`${componentBase}.scss`, rendered.scss);
 
-  const stubModules = {
-    '@angular/core': `
-export interface Signal<T> { (): T; set(value: T): void; }
+    const stubModules = {
+      '@angular/core': `
+export interface Signal<T> { (): T; set(value: T): void; update(fn: (value: T) => T): void; }
 export declare function Component(metadata: unknown): ClassDecorator;
 export declare function computed<T>(fn: () => T): () => T;
 export declare function signal<T>(value: T): Signal<T>;
 `,
-    '@angular/material/button': 'export declare class MatButtonModule {}',
-    '@angular/material/form-field': 'export declare class MatFormFieldModule {}',
-    '@angular/material/input': 'export declare class MatInputModule {}'
-  };
+      '@angular/material/button': 'export declare class MatButtonModule {}',
+      '@angular/material/form-field': 'export declare class MatFormFieldModule {}',
+      '@angular/material/input': 'export declare class MatInputModule {}'
+    };
 
-  for (const [moduleName, contents] of Object.entries(stubModules)) {
-    const moduleDir = path.join(tmpDir, 'node_modules', ...moduleName.split('/'));
-    fs.mkdirSync(moduleDir, { recursive: true });
-    fs.writeFileSync(path.join(moduleDir, 'index.d.ts'), contents.trimStart());
-  }
+    for (const [moduleName, contents] of Object.entries(stubModules)) {
+      const moduleDir = path.join(tmpDir, 'node_modules', ...moduleName.split('/'));
+      fs.mkdirSync(moduleDir, { recursive: true });
+      fs.writeFileSync(path.join(moduleDir, 'index.d.ts'), contents.trimStart());
+    }
 
-  fs.writeFileSync(path.join(tmpDir, 'tsconfig.json'), JSON.stringify({
-    compilerOptions: {
-      target: 'ES2022',
-      module: 'CommonJS',
-      moduleResolution: 'Node10',
-      experimentalDecorators: true,
-      strict: true,
-      skipLibCheck: true,
-      noEmit: true
-    },
-    include: ['**/*.ts', '**/*.d.ts']
-  }, null, 2));
+    fs.writeFileSync(path.join(tmpDir, 'tsconfig.json'), JSON.stringify({
+      compilerOptions: {
+        target: 'ES2022',
+        module: 'CommonJS',
+        moduleResolution: 'Node10',
+        experimentalDecorators: true,
+        strict: true,
+        skipLibCheck: true,
+        noEmit: true
+      },
+      include: ['**/*.ts', '**/*.d.ts']
+    }, null, 2));
 
-  const tscPath = path.join(repoRoot, 'node_modules', 'typescript', 'bin', 'tsc');
-  try {
+    const tscPath = path.join(repoRoot, 'node_modules', 'typescript', 'bin', 'tsc');
     execFileSync(process.execPath, [tscPath, '-p', path.join(tmpDir, 'tsconfig.json')], {
       cwd: tmpDir,
       stdio: 'pipe'
@@ -113,6 +114,10 @@ export declare function signal<T>(value: T): Signal<T>;
     const stderr = error.stderr?.toString() ?? '';
     const stdout = error.stdout?.toString() ?? '';
     throw new Error(`Generated component failed to compile:\n${stdout}${stderr}`);
+  } finally {
+    if (tmpDir) {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
   }
 }
 

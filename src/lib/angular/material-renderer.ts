@@ -25,6 +25,12 @@ interface RenderContext {
 
 const ALLOWED_HANDLER_CALLEE_PREFIXES = ['Math.'];
 const IDENTIFIER_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const SYNTACTIC_TS_EXPRESSION_PATTERN = /^[A-Za-z0-9_$.\s()[\]?:"',+\-*/%!=<>|&\\]+$/;
+
+function safeGeneratedTsExpression(expression: string): string {
+  const trimmed = expression.trim();
+  return trimmed && SYNTACTIC_TS_EXPRESSION_PATTERN.test(trimmed) ? trimmed : 'undefined';
+}
 
 function bindingLiteralOrExpr(binding: UiBinding | undefined, fieldPrefix: string, ctx: RenderContext): string {
   if (!binding) return "''";
@@ -41,12 +47,19 @@ function bindingLiteralOrExpr(binding: UiBinding | undefined, fieldPrefix: strin
   // as signal dependencies.  Re-lowering is cheap and guarantees correct deps.
   const lowered = lowerBinding(binding.expression ?? '');
   lowered.binding.dependencies.forEach(d => ctx.dependencyNames.add(d));
-  let classExpression = lowered.angularExpression;
+  // Re-parse for class-field generation because lowerBinding only returns the final
+  // template-style expression string and dependency list. That template-style form
+  // cannot be reused directly in the component class because class fields need
+  // `this.user().name` while templates use `user().name`, so we need the AST again
+  // to emit class-context signal reads safely.
+  let classExpression = 'undefined';
   if (binding.expression) {
     const parser = new ExpressionParser();
     const result = parser.parse(binding.expression);
     if (result.ast && result.errors.length === 0) {
-      classExpression = generateComponentExpression(result.ast, new Set(lowered.binding.dependencies));
+      classExpression = safeGeneratedTsExpression(
+        generateComponentExpression(result.ast, new Set(lowered.binding.dependencies))
+      );
     }
   }
   const fieldName = `${fieldPrefix}Expr${++ctx.exprCounter}`;
@@ -115,7 +128,9 @@ function renderAssignmentMethod(event: UiEvent, ctx: RenderContext): string {
       const hasUnverifiedIdentifiers = [...dependencyInfo.identifiers].some(identifier => !ctx.declaredSignalNames.has(identifier));
       const usesUnsupportedCallee = [...dependencyInfo.callees].some(callee => !isAllowedHandlerCallee(callee));
       if (!hasUnverifiedIdentifiers && !usesUnsupportedCallee) {
-        const valueExpression = generateComponentExpression(result.ast, ctx.declaredSignalNames);
+        const valueExpression = safeGeneratedTsExpression(
+          generateComponentExpression(result.ast, ctx.declaredSignalNames)
+        );
         return [
           `  ${event.generatedMethod.name}(): void {`,
           `    this.${model.target}.set(${valueExpression});`,
