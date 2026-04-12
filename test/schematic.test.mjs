@@ -15,7 +15,7 @@ test('qml-component schematic generates files inside a sample Angular workspace 
   const rule = qmlComponentSchematic({
     name: 'login-form',
     qmlFile: `${repoRoot}/examples/login.qml`,
-    path: 'projects/demo/src/app/login-form'
+    path: 'projects/demo/src/app'
   });
 
   const resultTree = rule(tree, { logger });
