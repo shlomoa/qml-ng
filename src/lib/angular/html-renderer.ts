@@ -57,7 +57,11 @@ function escapeHtmlAttribute(value: string): string {
 }
 
 function renderStyleAttribute(node: UiNode, parent: UiNode | undefined): string {
-  if (!node.layout || !parent) return '';
+  if (!node.layout) return '';
+  if (!parent) {
+    // Root layout is emitted on :host by the SCSS renderer to avoid duplicating host-level positioning.
+    return '';
+  }
 
   const layout = isFlowLayoutContainer(parent)
     ? {

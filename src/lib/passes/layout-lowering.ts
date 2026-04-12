@@ -86,11 +86,12 @@ export class LayoutLoweringPass implements LoweringPass {
     }
 
     if (isFlowLayoutContainer(parent) && hasAbsolutePositioning(layout)) {
+      const parentLabel = parent?.meta?.layoutKind ?? parent?.meta?.orientation ?? parent?.name ?? parent?.kind ?? 'unknown';
       context.diagnostics.push(
         createDiagnostic(
           'warning',
           'semantic',
-          `Parent layout container '${parent?.name ?? 'unknown'}' takes precedence over child anchors/x/y; qml-ng suppresses absolute positioning for this child and keeps only size hints.`,
+          `Parent layout container '${parentLabel}' takes precedence over child anchors/x/y; qml-ng suppresses absolute positioning for this child and keeps only size hints.`,
           node.location,
           context.filePath,
           'LAYOUT_CONTAINER_CONFLICT'
