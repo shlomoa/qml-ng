@@ -2,7 +2,7 @@ import { lowerBinding } from '../converter/expression-lowering';
 import { UiBinding, UiNode } from '../schema/ui-schema';
 import { DiagnosticsEmitter, RenderContext } from './renderer-contract';
 
-const ANGULAR_SAFE_EXPRESSION_PATTERN = /^[\w\s.$()[\]?:"',+\-*/%<>=!&|]+$/;
+const ANGULAR_EXPRESSION_ALLOWLIST_PATTERN = /^[\w\s.$()[\]?:"',+\-*/%<>=!&|]+$/;
 const UNSAFE_EXPRESSION_COMMENT =
   '/* TODO(qml-ng): Unsupported binding expression contains characters outside the Angular expression allowlist (for example backticks, semicolons, or braces) and needs manual review. */';
 
@@ -38,7 +38,7 @@ export interface UiNodeRenderRule {
 }
 
 function sanitizeAngularComputedExpression(expression: string): { expression: string; comment?: string } {
-  if (ANGULAR_SAFE_EXPRESSION_PATTERN.test(expression)) {
+  if (ANGULAR_EXPRESSION_ALLOWLIST_PATTERN.test(expression)) {
     return { expression };
   }
 
@@ -161,7 +161,7 @@ function renderButton(node: UiNode, context: RenderContext): string {
 
 function renderAnimation(node: UiNode): string {
   return node.name
-    ? `<!-- qml-ng approximation: ignored ${node.name.replace(/--/g, '—').trim()} node. -->`
+    ? `<!-- qml-ng unsupported: ignored ${node.name.replace(/--/g, '—').trim()} node. -->`
     : '';
 }
 
