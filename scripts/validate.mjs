@@ -1,7 +1,7 @@
-import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { format } from 'node:util';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
@@ -66,12 +66,32 @@ function assertNotContains(text, snippet, label) {
   }
 }
 
-function runCli(args, expectedStatus = 0) {
-  const cliPath = path.join(repoRoot, 'dist', 'cli.js');
-  const result = spawnSync(process.execPath, [cliPath, ...args], {
-    cwd: repoRoot,
-    encoding: 'utf8'
-  });
+function runCli(cliRunner, args, expectedStatus = 0) {
+  const stdout = [];
+  const stderr = [];
+  const originalLog = console.log;
+  const originalError = console.error;
+  let status;
+
+  console.log = (...parts) => {
+    stdout.push(format(...parts));
+  };
+  console.error = (...parts) => {
+    stderr.push(format(...parts));
+  };
+
+  try {
+    status = cliRunner(args);
+  } finally {
+    console.log = originalLog;
+    console.error = originalError;
+  }
+
+  const result = {
+    status,
+    stdout: stdout.join('\n'),
+    stderr: stderr.join('\n')
+  };
 
   if (result.status !== expectedStatus) {
     throw new Error(
@@ -125,6 +145,13 @@ async function loadBuiltModules() {
   const renderer = await import(pathToFileURL(path.join(repoRoot, 'dist', 'lib', 'angular', 'material-renderer.js')).href);
   const rendererContract = await import(pathToFileURL(path.join(repoRoot, 'dist', 'lib', 'angular', 'renderer-contract.js')).href);
   const nodeRegistry = await import(pathToFileURL(path.join(repoRoot, 'dist', 'lib', 'angular', 'node-render-registry.js')).href);
+  const cli = await import(pathToFileURL(path.join(repoRoot, 'dist', 'cli.js')).href);
+  const cliRunner = cli.runCli ?? cli.default?.runCli;
+
+  if (typeof cliRunner !== 'function') {
+    throw new Error('Could not load runCli() from dist/cli.js');
+  }
+
   return {
     parseQml: parser.parseQml,
     collectResolvedQmlDependencies: resolver.collectResolvedQmlDependencies,
@@ -132,7 +159,8 @@ async function loadBuiltModules() {
     renderAngularMaterial: renderer.renderAngularMaterial,
     AngularMaterialRenderer: renderer.AngularMaterialRenderer,
     createRenderContext: rendererContract.createRenderContext,
-    getUiNodeRenderRule: nodeRegistry.getUiNodeRenderRule
+    getUiNodeRenderRule: nodeRegistry.getUiNodeRenderRule,
+    runCli: cliRunner
   };
 }
 
@@ -386,7 +414,7 @@ function validateEventModelCase(mods, testCase) {
   }
 }
 
-function validateCliModes() {
+function validateCliModes(mods) {
   const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), 'qml-ng-cli-fixture-'));
   const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'qml-ng-cli-output-'));
 
@@ -399,7 +427,7 @@ function validateCliModes() {
     'Item {\n  Timeline {}\n}\n'
   );
 
-  const dryRun = runCli([fixtureDir, '--dry-run', '--verbose']);
+  const dryRun = runCli(mods.runCli, [fixtureDir, '--dry-run', '--verbose']);
   assertContains(dryRun.stdout, 'SUPPORTED Supported.qml', 'CLI batch dry-run');
   assertContains(dryRun.stdout, 'UNSUPPORTED Unsupported.qml', 'CLI batch dry-run');
   assertContains(
@@ -409,10 +437,10 @@ function validateCliModes() {
   );
   assertContains(dryRun.stdout, 'Summary:', 'CLI batch summary');
 
-  const diff = runCli([fixtureDir, '--output-dir', outputDir, '--diff']);
+  const diff = runCli(mods.runCli, [fixtureDir, '--output-dir', outputDir, '--diff']);
   assertContains(diff.stdout, `+++ ${path.join(outputDir, 'supported', 'supported.component.ts')}`, 'CLI diff mode');
 
-  const strict = runCli([fixtureDir, '--dry-run', '--strict'], 1);
+  const strict = runCli(mods.runCli, [fixtureDir, '--dry-run', '--strict'], 1);
   assertContains(strict.stderr, 'Strict mode failed', 'CLI strict mode');
 }
 
@@ -593,7 +621,7 @@ for (const testCase of eventModelCases) {
 }
 
 console.log('Validating CLI developer-experience modes...');
-validateCliModes();
+validateCliModes(mods);
 
 if (failures.length) {
   const message = failures

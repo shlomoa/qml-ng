@@ -1,4 +1,6 @@
 import { lowerBinding } from '../converter/expression-lowering';
+import { ExpressionNode } from '../qml/expression-ast';
+import { ExpressionParser } from '../qml/expression-parser';
 import { layoutToCssDeclarations } from '../converter/layout-resolver';
 import { isFlowLayoutContainer, suppressAbsolutePositioning } from '../layout/layout-utils';
 import { UiBinding, UiNode } from '../schema/ui-schema';
@@ -55,6 +57,36 @@ function sanitizeAngularComputedExpression(expression: string): { expression: st
   };
 }
 
+function generateComponentExpression(ast: ExpressionNode, declaredSignalNames: Set<string>): string {
+  switch (ast.kind) {
+    case 'literal':
+      return JSON.stringify(ast.value);
+
+    case 'identifier':
+      return declaredSignalNames.has(ast.name) ? `this.${ast.name}()` : ast.name;
+
+    case 'memberAccess':
+      return `${generateComponentExpression(ast.object, declaredSignalNames)}${ast.optional ? '?.' : '.'}${ast.property}`;
+
+    case 'call':
+      return `${generateComponentExpression(ast.callee, declaredSignalNames)}(${ast.arguments
+        .map(argument => generateComponentExpression(argument, declaredSignalNames))
+        .join(', ')})`;
+
+    case 'unaryOp':
+      return `${ast.operator}${generateComponentExpression(ast.argument, declaredSignalNames)}`;
+
+    case 'binaryOp':
+      return `${generateComponentExpression(ast.left, declaredSignalNames)} ${ast.operator} ${generateComponentExpression(ast.right, declaredSignalNames)}`;
+
+    case 'conditional':
+      return `${generateComponentExpression(ast.test, declaredSignalNames)} ? ${generateComponentExpression(ast.consequent, declaredSignalNames)} : ${generateComponentExpression(ast.alternate, declaredSignalNames)}`;
+
+    case 'array':
+      return `[${ast.elements.map(element => generateComponentExpression(element, declaredSignalNames)).join(', ')}]`;
+  }
+}
+
 function bindingLiteralOrExpr(binding: UiBinding | undefined, fieldPrefix: string, context: RenderContext): string {
   if (!binding) return "''";
 
@@ -65,7 +97,15 @@ function bindingLiteralOrExpr(binding: UiBinding | undefined, fieldPrefix: strin
   const lowered = lowerBinding(binding.expression ?? '');
   lowered.binding.dependencies.forEach(dependency => context.dependencyNames.add(dependency));
   const fieldName = `${fieldPrefix}Expr${++context.computedExpressionCounter}`;
-  const sanitized = sanitizeAngularComputedExpression(lowered.angularExpression);
+  let classExpression = lowered.angularExpression;
+  if (binding.expression) {
+    const parser = new ExpressionParser();
+    const result = parser.parse(binding.expression);
+    if (result.ast && result.errors.length === 0) {
+      classExpression = generateComponentExpression(result.ast, new Set(lowered.binding.dependencies));
+    }
+  }
+  const sanitized = sanitizeAngularComputedExpression(classExpression);
   const computedExpression = sanitized.comment
     ? `${sanitized.expression} ${sanitized.comment}`
     : sanitized.expression;

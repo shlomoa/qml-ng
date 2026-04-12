@@ -6,9 +6,15 @@ import { DiagnosticsEmitter, ImportsResolver, NamingService, RenderContext, Type
 
 const ALLOWED_HANDLER_CALLEE_PREFIXES = ['Math.'];
 const IDENTIFIER_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const SAFE_COMPONENT_EXPRESSION_PATTERN = /^[\w\s.$()[\]?:"',+\-*/%<>=!&|]+$/;
 
 function isAllowedHandlerCallee(callee: string): boolean {
   return ALLOWED_HANDLER_CALLEE_PREFIXES.some(prefix => callee.startsWith(prefix));
+}
+
+function sanitizeComponentExpression(expression: string): string {
+  const trimmed = expression.trim();
+  return trimmed && SAFE_COMPONENT_EXPRESSION_PATTERN.test(trimmed) ? trimmed : 'undefined';
 }
 
 function generateComponentMethodExpression(ast: ExpressionNode, declaredSignalNames: Set<string>): string {
@@ -56,7 +62,9 @@ function renderAssignmentMethod(event: UiEvent, context: RenderContext, diagnost
       const hasUnverifiedIdentifiers = [...dependencyInfo.identifiers].some(identifier => !context.declaredSignalNames.has(identifier));
       const usesUnsupportedCallee = [...dependencyInfo.callees].some(callee => !isAllowedHandlerCallee(callee));
       if (!hasUnverifiedIdentifiers && !usesUnsupportedCallee) {
-        const valueExpression = generateComponentMethodExpression(result.ast, context.declaredSignalNames);
+        const valueExpression = sanitizeComponentExpression(
+          generateComponentMethodExpression(result.ast, context.declaredSignalNames)
+        );
         return [
           `  ${event.generatedMethod.name}(): void {`,
           `    this.${model.target}.set(${valueExpression});`,

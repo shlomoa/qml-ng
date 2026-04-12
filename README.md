@@ -99,6 +99,8 @@ For day-to-day validation:
 
 - use `examples/login.qml` for a fast smoke test
 - use curated files from `examples/FigmaVariants` and `examples/WebinarDemo` for regression, diagnostics, and feature-planning work
+- run `npm test` for tokenizer, parser, semantic lowering, renderer snapshot/golden, schematic integration, and generated-component compile checks
+- run `UPDATE_SNAPSHOTS=1 npm test` only when an intentional generator change requires refreshing committed snapshots under `test/__snapshots__`
 
 ## Main architecture
 
