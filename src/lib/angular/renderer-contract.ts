@@ -15,7 +15,7 @@ export interface RenderContext {
   declaredSignalNames: Set<string>;
   /** Event handlers that require generated component methods, in first-seen order. */
   requiredGeneratedMethods: UiEvent[];
-  /** De-duplication set paired with requiredGeneratedMethods. */
+  /** De-duplication index for requiredGeneratedMethods so each generated method is recorded once. */
   requiredGeneratedMethodNames: Set<string>;
   /** Monotonic counter used to create deterministic computed field names. */
   computedExpressionCounter: number;

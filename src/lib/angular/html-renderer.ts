@@ -2,10 +2,17 @@ import { lowerBinding } from '../converter/expression-lowering';
 import { UiBinding, UiEvent, UiNode } from '../schema/ui-schema';
 import { DiagnosticsEmitter, HtmlRenderer, RenderContext } from './renderer-contract';
 
-const ALLOWED_ANGULAR_COMPUTED_EXPRESSION_PATTERN = /^[\w\s.$()[\]?:"',+\-*/%<>=!&|]+$/;
+const SAFE_COMPUTED_EXPRESSION_PATTERN = /^[\w\s.$()[\]?:"',+\-*/%<>=!&|]+$/;
 
-function sanitizeAngularComputedExpression(expression: string): string {
-  return ALLOWED_ANGULAR_COMPUTED_EXPRESSION_PATTERN.test(expression) ? expression : 'undefined';
+function sanitizeAngularComputedExpression(expression: string): { expression: string; comment?: string } {
+  if (SAFE_COMPUTED_EXPRESSION_PATTERN.test(expression)) {
+    return { expression };
+  }
+
+  return {
+    expression: 'undefined',
+    comment: '/* TODO(qml-ng): Unsupported binding expression sanitized during Angular emission. */'
+  };
 }
 
 function bindingLiteralOrExpr(binding: UiBinding | undefined, fieldPrefix: string, context: RenderContext): string {
@@ -18,8 +25,11 @@ function bindingLiteralOrExpr(binding: UiBinding | undefined, fieldPrefix: strin
   const lowered = lowerBinding(binding.expression ?? '');
   lowered.binding.dependencies.forEach(dependency => context.dependencyNames.add(dependency));
   const fieldName = `${fieldPrefix}Expr${++context.computedExpressionCounter}`;
-  const angularExpression = sanitizeAngularComputedExpression(lowered.angularExpression);
-  context.computedDeclarations.push(`readonly ${fieldName} = computed(() => ${angularExpression});`);
+  const sanitized = sanitizeAngularComputedExpression(lowered.angularExpression);
+  const computedExpression = sanitized.comment
+    ? `${sanitized.expression} ${sanitized.comment}`
+    : sanitized.expression;
+  context.computedDeclarations.push(`readonly ${fieldName} = computed(() => ${computedExpression});`);
   return `${fieldName}()`;
 }
 
