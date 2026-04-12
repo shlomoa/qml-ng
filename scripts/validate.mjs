@@ -71,7 +71,7 @@ function diagnosticsText(document) {
   return text || 'None';
 }
 
-function renderCase(mods, testCase) {
+function convertAndRenderCase(mods, testCase) {
   const source = testCase.source ?? fs.readFileSync(testCase.filePath, 'utf8');
   const searchRoot = testCase.filePath
     ? [path.dirname(path.dirname(testCase.filePath))]
@@ -222,7 +222,7 @@ function validateLayoutSamples(mods) {
 }
 
 function validateRenderedCase(mods, testCase) {
-  const { document, rendered } = renderCase(mods, testCase);
+  const { document, rendered } = convertAndRenderCase(mods, testCase);
   const renderedDiagnostics = diagnosticsText(document);
 
   if (testCase.expectContainer ?? true) {
@@ -255,7 +255,7 @@ function validateRenderedCase(mods, testCase) {
 }
 
 function validateEventModelCase(mods, testCase) {
-  const { document } = renderCase(mods, testCase);
+  const { document } = convertAndRenderCase(mods, testCase);
   const events = collectEvents(document.root);
 
   for (const expectedEvent of testCase.expectedEvents ?? []) {
