@@ -2,10 +2,10 @@ import { lowerBinding } from '../converter/expression-lowering';
 import { UiBinding, UiEvent, UiNode } from '../schema/ui-schema';
 import { DiagnosticsEmitter, HtmlRenderer, RenderContext } from './renderer-contract';
 
-const SAFE_COMPUTED_EXPRESSION_PATTERN = /^[\w\s.$()[\]?:"',+\-*/%<>=!&|]+$/;
+const BASIC_COMPUTED_EXPRESSION_PATTERN = /^[\w\s.$()[\]?:"',+\-*/%<>=!&|]+$/;
 
 function sanitizeAngularComputedExpression(expression: string): { expression: string; comment?: string } {
-  if (SAFE_COMPUTED_EXPRESSION_PATTERN.test(expression)) {
+  if (BASIC_COMPUTED_EXPRESSION_PATTERN.test(expression)) {
     return { expression };
   }
 
