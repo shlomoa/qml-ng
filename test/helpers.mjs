@@ -10,7 +10,11 @@ export const repoRoot = path.resolve(testDir, '..');
 const distRoot = path.join(repoRoot, 'dist');
 
 function normalizeText(text) {
-  return text.replace(/\r\n/g, '\n');
+  // Normalize line endings
+  let normalized = text.replace(/\r\n/g, '\n');
+  // Normalize ISO timestamp in version comments to a fixed value
+  normalized = normalized.replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z/g, '2024-12-05T15:00:00.000Z');
+  return normalized;
 }
 
 export async function loadBuiltModules() {

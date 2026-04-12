@@ -106,12 +106,50 @@ export interface UiNode {
   stateDeclarations?: UiStateDeclaration[];
   meta?: Record<string, unknown>;
   location?: SourceRange;
+  /** Deprecation warnings for this node, if any */
+  deprecations?: DeprecationInfo[];
+}
+
+/**
+ * Current schema version following semantic versioning.
+ *
+ * Schema version format: MAJOR.MINOR
+ * - MAJOR: Incremented for breaking changes (incompatible schema structure changes)
+ * - MINOR: Incremented for backward-compatible additions
+ *
+ * Version History:
+ * - 1.0: Initial schema with UiBinding, UiEvent, UiLayout, UiNode, UiDocument
+ */
+export const SCHEMA_VERSION = '1.0';
+
+/**
+ * Version information for generated components.
+ * This tracks the qml-ng tool version that produced the schema/output.
+ */
+export interface VersionInfo {
+  schemaVersion: string;
+  generatorVersion: string;
+  generatedAt: string;
+}
+
+/**
+ * Deprecation information for features that are being phased out.
+ */
+export interface DeprecationInfo {
+  feature: string;
+  reason: string;
+  alternative?: string;
+  removeInVersion?: string;
 }
 
 export interface UiDocument {
   name: string;
   root: UiNode;
   diagnostics: UiDiagnostic[];
+  /** Version information for this document */
+  version?: VersionInfo;
+  /** Document-level deprecations */
+  deprecations?: DeprecationInfo[];
 }
 
 export function createDiagnostic(
