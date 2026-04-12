@@ -27,7 +27,7 @@ test('semantic lowering extracts state declarations and event models', async () 
   assert.equal(button.kind, 'button');
   assert.equal(button.events[0].behavior, 'method');
   assert.equal(button.events[0].handlerModel?.kind, 'assignment');
-  assert.match(button.events[0].generatedMethod?.name ?? '', /^handleClick\d+$/);
+  assert.match(button.events[0].generatedMethod?.name ?? '', /^handleClick(?:\d+|L\d+C\d+(?:_\d+)?)$/);
   assert.ok(document.diagnostics.some(diagnostic => diagnostic.code === 'HANDLER_METHOD_STUB'));
 });
 

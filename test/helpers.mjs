@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import ts from 'typescript';
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 export const repoRoot = path.resolve(testDir, '..');
@@ -105,15 +105,32 @@ export declare function signal<T>(value: T): Signal<T>;
       include: ['**/*.ts', '**/*.d.ts']
     }, null, 2));
 
-    const tscPath = path.join(repoRoot, 'node_modules', 'typescript', 'bin', 'tsc');
-    execFileSync(process.execPath, [tscPath, '-p', path.join(tmpDir, 'tsconfig.json')], {
-      cwd: tmpDir,
-      stdio: 'pipe'
+    const configPath = path.join(tmpDir, 'tsconfig.json');
+    const configFile = ts.readConfigFile(configPath, ts.sys.readFile);
+    const parsedConfig = ts.parseJsonConfigFileContent(configFile.config, ts.sys, tmpDir, undefined, configPath);
+    const program = ts.createProgram({
+      rootNames: parsedConfig.fileNames,
+      options: parsedConfig.options
     });
+    const diagnostics = [
+      ...(configFile.error ? [configFile.error] : []),
+      ...parsedConfig.errors,
+      ...ts.getPreEmitDiagnostics(program)
+    ];
+
+    if (diagnostics.length > 0) {
+      const formatHost = {
+        getCanonicalFileName: fileName => fileName,
+        getCurrentDirectory: () => tmpDir,
+        getNewLine: () => '\n'
+      };
+      throw new Error(`Generated component failed to compile:\n${ts.formatDiagnostics(diagnostics, formatHost)}`);
+    }
   } catch (error) {
-    const stderr = error.stderr?.toString() ?? '';
-    const stdout = error.stdout?.toString() ?? '';
-    throw new Error(`Generated component failed to compile:\n${stdout}${stderr}`);
+    if (error instanceof Error && error.message.startsWith('Generated component failed to compile:\n')) {
+      throw error;
+    }
+    throw new Error(`Generated component failed to compile:\n${error instanceof Error ? error.message : String(error)}`);
   } finally {
     if (tmpDir) {
       fs.rmSync(tmpDir, { recursive: true, force: true });

@@ -1,3 +1,36 @@
+info:LAYOUT_RULE_APPROXIMATE:[approximate] x: Mapped to CSS left with absolute positioning.
+info:LAYOUT_RULE_APPROXIMATE:[approximate] y: Mapped to CSS top with absolute positioning.
+info:LAYOUT_RULE_EXACT:[exact] width: Mapped to CSS width.
+info:LAYOUT_RULE_EXACT:[exact] height: Mapped to CSS height.
+info:LAYOUT_RULE_APPROXIMATE:[approximate] x: Mapped to CSS left with absolute positioning.
+info:LAYOUT_RULE_APPROXIMATE:[approximate] y: Mapped to CSS top with absolute positioning.
+info:LAYOUT_RULE_EXACT:[exact] width: Mapped to CSS width.
+info:LAYOUT_RULE_EXACT:[exact] height: Mapped to CSS height.
+info:LAYOUT_RULE_APPROXIMATE:[approximate] x: Mapped to CSS left with absolute positioning.
+info:LAYOUT_RULE_APPROXIMATE:[approximate] y: Mapped to CSS top with absolute positioning.
+info:LAYOUT_RULE_EXACT:[exact] width: Mapped to CSS width.
+info:LAYOUT_RULE_EXACT:[exact] height: Mapped to CSS height.
 warning:UNSUPPORTED_TYPE:QML type 'SvgPathItem' is not supported in qml-ng v1.0. This element will be skipped or rendered as a placeholder.
+info:LAYOUT_RULE_APPROXIMATE:[approximate] x: Mapped to CSS left with absolute positioning.
+info:LAYOUT_RULE_APPROXIMATE:[approximate] y: Mapped to CSS top with absolute positioning.
+info:LAYOUT_RULE_EXACT:[exact] width: Mapped to CSS width.
+info:LAYOUT_RULE_EXACT:[exact] height: Mapped to CSS height.
 warning:UNKNOWN_TYPE:Unsupported QML type: SvgPathItem. Converting as generic container.
-warning:UNSUPPORTED_TYPE:QML type 'SvgPathItem' is not supported in qml-ng v1.0. This element will be skipped or rendered as a placeholder.
+info:LAYOUT_RULE_EXACT:[exact] width: Mapped to CSS width.
+info:LAYOUT_RULE_EXACT:[exact] height: Mapped to CSS height.
+info:LAYOUT_RULE_APPROXIMATE:[approximate] x: Mapped to CSS left with absolute positioning.
+info:LAYOUT_RULE_APPROXIMATE:[approximate] y: Mapped to CSS top with absolute positioning.
+info:LAYOUT_RULE_EXACT:[exact] width: Mapped to CSS width.
+info:LAYOUT_RULE_EXACT:[exact] height: Mapped to CSS height.
+info:LAYOUT_RULE_APPROXIMATE:[approximate] x: Mapped to CSS left with absolute positioning.
+info:LAYOUT_RULE_APPROXIMATE:[approximate] y: Mapped to CSS top with absolute positioning.
+info:LAYOUT_RULE_EXACT:[exact] width: Mapped to CSS width.
+info:LAYOUT_RULE_EXACT:[exact] height: Mapped to CSS height.
+info:LAYOUT_RULE_APPROXIMATE:[approximate] x: Mapped to CSS left with absolute positioning.
+info:LAYOUT_RULE_APPROXIMATE:[approximate] y: Mapped to CSS top with absolute positioning.
+info:LAYOUT_RULE_EXACT:[exact] width: Mapped to CSS width.
+info:LAYOUT_RULE_EXACT:[exact] height: Mapped to CSS height.
+info:LAYOUT_RULE_APPROXIMATE:[approximate] x: Mapped to CSS left with absolute positioning.
+info:LAYOUT_RULE_APPROXIMATE:[approximate] y: Mapped to CSS top with absolute positioning.
+info:LAYOUT_RULE_EXACT:[exact] width: Mapped to CSS width.
+info:LAYOUT_RULE_EXACT:[exact] height: Mapped to CSS height.

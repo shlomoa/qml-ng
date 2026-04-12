@@ -232,76 +232,98 @@ function finalizeStrictMode(results: FileConversionResult[], strict: boolean): v
   }
 
   console.error(`Strict mode failed: ${failures.length} file(s) contain unsupported features or errors.`);
-  process.exit(1);
+  throw new Error('CLI_STRICT_MODE_FAILED');
 }
 
-const options = parseArgs(process.argv.slice(2));
+export function runCli(argv: string[]): number {
+  const options = parseArgs(argv);
 
-if (!options) {
-  printUsage();
-  process.exit(1);
-}
+  if (!options) {
+    printUsage();
+    return 1;
+  }
 
-options.componentName = options.componentName ? ensureOptionValue(options.componentName, '--name') : undefined;
-options.outputDir = options.outputDir ? ensureOptionValue(options.outputDir, '--output-dir') : undefined;
+  try {
+    options.componentName = options.componentName ? ensureOptionValue(options.componentName, '--name') : undefined;
+    options.outputDir = options.outputDir ? ensureOptionValue(options.outputDir, '--output-dir') : undefined;
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    printUsage();
+    return 1;
+  }
 
-if (options.diff && !options.outputDir) {
-  console.error('--diff requires --output-dir so qml-ng can compare against generated files on disk.');
-  process.exit(1);
-}
+  if (options.diff && !options.outputDir) {
+    console.error('--diff requires --output-dir so qml-ng can compare against generated files on disk.');
+    return 1;
+  }
 
-const inputPath = path.resolve(options.inputPath);
-if (!fs.existsSync(inputPath)) {
-  console.error(`Input not found: ${inputPath}`);
-  process.exit(1);
-}
+  const inputPath = path.resolve(options.inputPath);
+  if (!fs.existsSync(inputPath)) {
+    console.error(`Input not found: ${inputPath}`);
+    return 1;
+  }
 
-const stat = fs.statSync(inputPath);
-const isBatch = options.batch || stat.isDirectory();
+  try {
+    const stat = fs.statSync(inputPath);
+    const isBatch = options.batch || stat.isDirectory();
 
-if (isBatch) {
-  const batchDir = stat.isDirectory() ? inputPath : path.dirname(inputPath);
-  const results = stat.isDirectory()
-    ? convertDirectory(batchDir, options.recursive)
-    : collectQmlFiles(batchDir, options.recursive)
-      .filter(filePath => filePath === inputPath)
-      .map(filePath => convertQmlFile(filePath, { rootDir: batchDir }));
+    if (isBatch) {
+      const batchDir = stat.isDirectory() ? inputPath : path.dirname(inputPath);
+      const results = stat.isDirectory()
+        ? convertDirectory(batchDir, options.recursive)
+        : collectQmlFiles(batchDir, options.recursive)
+          .filter(filePath => filePath === inputPath)
+          .map(filePath => convertQmlFile(filePath, { rootDir: batchDir }));
 
-  for (const result of results) {
-    printBatchResult(result, options.verbose);
+      for (const result of results) {
+        printBatchResult(result, options.verbose);
+        if (options.diff && options.outputDir) {
+          printGeneratedFileDiffs(result, options.outputDir);
+          continue;
+        }
+
+        if (options.dryRun || !options.outputDir) {
+          printGeneratedFilePlan(result, options.outputDir);
+          continue;
+        }
+
+        writeGeneratedFiles(result, options.outputDir);
+      }
+
+      console.log(formatBatchSummary(summarizeBatch(results)));
+      finalizeStrictMode(results, options.strict);
+      return 0;
+    }
+
+    const inferredComponentName = path.basename(inputPath).replace(/(\.ui)?\.qml$/, '');
+    const componentName = options.componentName ?? (inferredComponentName || dasherize(inputPath));
+    const result = convertQmlFile(inputPath, { componentName, rootDir: path.dirname(inputPath) });
+
     if (options.diff && options.outputDir) {
       printGeneratedFileDiffs(result, options.outputDir);
-      continue;
+    } else if (options.dryRun || options.outputDir) {
+      if (!options.dryRun && options.outputDir) {
+        writeGeneratedFiles(result, options.outputDir);
+      } else {
+        printGeneratedFilePlan(result, options.outputDir);
+      }
+      console.log(formatDiagnostics(result.diagnostics).join('\n') || 'None');
+    } else {
+      printSingleFileOutput(result);
     }
 
-    if (options.dryRun || !options.outputDir) {
-      printGeneratedFilePlan(result, options.outputDir);
-      continue;
+    finalizeStrictMode([result], options.strict);
+    return 0;
+  } catch (error) {
+    if (error instanceof Error && error.message === 'CLI_STRICT_MODE_FAILED') {
+      return 1;
     }
 
-    writeGeneratedFiles(result, options.outputDir);
+    console.error(error instanceof Error ? error.message : String(error));
+    return 1;
   }
-
-  console.log(formatBatchSummary(summarizeBatch(results)));
-  finalizeStrictMode(results, options.strict);
-  process.exit(0);
 }
 
-const inferredComponentName = path.basename(inputPath).replace(/(\.ui)?\.qml$/, '');
-const componentName = options.componentName ?? (inferredComponentName || dasherize(inputPath));
-const result = convertQmlFile(inputPath, { componentName, rootDir: path.dirname(inputPath) });
-
-if (options.diff && options.outputDir) {
-  printGeneratedFileDiffs(result, options.outputDir);
-} else if (options.dryRun || options.outputDir) {
-  if (!options.dryRun && options.outputDir) {
-    writeGeneratedFiles(result, options.outputDir);
-  } else {
-    printGeneratedFilePlan(result, options.outputDir);
-  }
-  console.log(formatDiagnostics(result.diagnostics).join('\n') || 'None');
-} else {
-  printSingleFileOutput(result);
+if (require.main === module) {
+  process.exit(runCli(process.argv.slice(2)));
 }
-
-finalizeStrictMode([result], options.strict);
