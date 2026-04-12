@@ -1,5 +1,5 @@
 import { QmlDocument, QmlObjectNode, QmlProperty, QmlHandler, QmlImport } from '../qml/ast';
-import { UiDocument, UiNode, UiDiagnostic, UiStateDeclaration, createDiagnostic, SourceRange } from '../schema/ui-schema';
+import { UiDocument, UiNode, UiDiagnostic, UiStateDeclaration, createDiagnostic, SourceRange, SCHEMA_VERSION, VersionInfo } from '../schema/ui-schema';
 import {
   PassContext,
   PassPipeline,
@@ -12,6 +12,16 @@ import {
 } from '../passes';
 import { resolveLayout } from './layout-resolver';
 import { lowerBinding as lowerBindingAst } from './expression-lowering';
+
+// Import package.json version at runtime
+let packageVersion = '0.0.0';
+try {
+  // This will be resolved at runtime from the built dist location
+  packageVersion = require('../../../package.json').version;
+} catch {
+  // Fallback if package.json is not accessible
+  packageVersion = '0.3.0';
+}
 
 /**
  * Legacy function for backward compatibility.
@@ -385,9 +395,17 @@ function buildInitialNode(
 export function qmlToUiDocument(name: string, qml: QmlDocument, filePath?: string): UiDocument {
   const diagnostics: UiDiagnostic[] = [];
   diagnoseQtQuickLayoutsImport(qml.imports, qml.root, diagnostics, filePath);
+
+  const version: VersionInfo = {
+    schemaVersion: SCHEMA_VERSION,
+    generatorVersion: packageVersion,
+    generatedAt: new Date().toISOString()
+  };
+
   return {
     name,
     root: qmlNodeToUi(qml.root, diagnostics, filePath),
-    diagnostics
+    diagnostics,
+    version
   };
 }
