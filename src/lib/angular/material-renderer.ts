@@ -23,6 +23,8 @@ interface RenderContext {
   exprCounter: number;
 }
 
+const ALLOWED_HANDLER_CALLEE_PREFIXES = ['Math.'];
+
 function bindingLiteralOrExpr(binding: UiBinding | undefined, fieldPrefix: string, ctx: RenderContext): string {
   if (!binding) return "''";
 
@@ -98,7 +100,9 @@ function renderAssignmentMethod(event: UiEvent, ctx: RenderContext): string {
     if (result.ast && result.errors.length === 0) {
       const dependencyInfo = extractDependencies(result.ast);
       const usesUnknownIdentifiers = [...dependencyInfo.identifiers].some(identifier => !ctx.declaredSignalNames.has(identifier));
-      const usesUnsupportedCallee = [...dependencyInfo.callees].some(callee => !callee.startsWith('Math.'));
+      const usesUnsupportedCallee = [...dependencyInfo.callees].some(
+        callee => !ALLOWED_HANDLER_CALLEE_PREFIXES.some(prefix => callee.startsWith(prefix))
+      );
       if (!usesUnknownIdentifiers && !usesUnsupportedCallee) {
         const valueExpression = generateComponentMethodExpression(result.ast, ctx.declaredSignalNames);
         return [

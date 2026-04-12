@@ -225,7 +225,7 @@ function validateRenderedCase(mods, testCase) {
   const { document, rendered } = renderCase(mods, testCase);
   const renderedDiagnostics = diagnosticsText(document);
 
-  if (testCase.expectContainer !== false) {
+  if (testCase.expectContainer ?? true) {
     assertContains(rendered.html, `<div class="`, `${testCase.label} HTML`);
   }
 
