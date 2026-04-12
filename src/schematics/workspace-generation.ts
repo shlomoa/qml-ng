@@ -140,7 +140,18 @@ function modulePath(fromDirectory: string[], toFileWithoutExtension: string[]): 
   const downward = toFileWithoutExtension.slice(commonLength);
   const relative = [...upward, ...downward];
 
-  return relative.length === 0 ? './' : relative[0].startsWith('.') ? relative.join('/') : `./${relative.join('/')}`;
+  if (relative.length === 0) {
+    return './';
+  }
+
+  const joined = relative.join('/');
+  return relative[0].startsWith('.') ? joined : `./${joined}`;
+}
+
+function escapeTypeScriptString(value: string): string {
+  return value
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'");
 }
 
 export function defaultComponentName(name: string): string {
@@ -208,18 +219,23 @@ export function planComponentOutput(
   const componentDirectorySegments = joinSegments(layout.featureRoot, relativeSegments, [normalizedComponentName]);
   const fileBaseName = normalizedComponentName;
   const tsFileSegments = [...componentDirectorySegments, `${fileBaseName}.component`];
-  const routeFileSegments = layout.routeMode === 'project'
-    ? [...layout.appRoot, 'app.routes.ts']
-    : layout.routeMode === 'feature'
-      ? [...layout.featureRoot, 'feature.routes.ts']
-      : undefined;
+  let routeFileSegments: string[] | undefined;
+
+  if (layout.routeMode === 'project') {
+    routeFileSegments = [...layout.appRoot, 'app.routes.ts'];
+  } else if (layout.routeMode === 'feature') {
+    routeFileSegments = [...layout.featureRoot, 'feature.routes.ts'];
+  }
+
   const routeDirectory = routeFileSegments ? splitSegments(dirname(normalize(toTreePath(routeFileSegments)))) : undefined;
+  const routePath = [...relativeSegments, normalizedComponentName].join('/');
+  const routeImportPath = routeDirectory ? modulePath(routeDirectory, tsFileSegments) : undefined;
 
   return {
     projectName: layout.projectName,
     componentName: normalizedComponentName,
     className: componentClassName(normalizedComponentName),
-    routePath: [...relativeSegments, normalizedComponentName].join('/'),
+    routePath,
     featureRoot: toTreePath(layout.featureRoot),
     shellRoot: toTreePath(layout.shellRoot),
     assetRoot: toTreePath(layout.assetRoot),
@@ -230,9 +246,9 @@ export function planComponentOutput(
     barrelPath: layout.updateBarrel ? `${toTreePath(layout.featureRoot)}/index.ts` : undefined,
     barrelExportPath: layout.updateBarrel ? modulePath(layout.featureRoot, tsFileSegments) : undefined,
     routeFilePath: routeFileSegments ? toTreePath(routeFileSegments) : undefined,
-    routeImportPath: routeDirectory ? modulePath(routeDirectory, tsFileSegments) : undefined,
-    routeDeclaration: routeDirectory
-      ? `{ path: '${[...relativeSegments, normalizedComponentName].join('/')}', loadComponent: () => import('${modulePath(routeDirectory, tsFileSegments)}').then(m => m.${componentClassName(normalizedComponentName)}) }`
+    routeImportPath,
+    routeDeclaration: routeDirectory && routeImportPath
+      ? `{ path: '${escapeTypeScriptString(routePath)}', loadComponent: () => import('${escapeTypeScriptString(routeImportPath)}').then(m => m.${componentClassName(normalizedComponentName)}) }`
       : undefined
   };
 }
@@ -295,7 +311,9 @@ export function updateRouteFile(tree: Tree, plans: WorkspaceComponentPlan[]): vo
   const source = tree.readText(firstPlan.routeFilePath);
 
   if (!source.includes('export const routes: Routes = [')) {
-    throw new Error(`Unsupported route file format: ${firstPlan.routeFilePath}`);
+    throw new Error(
+      `Unsupported route file format: ${firstPlan.routeFilePath}. Expected file to contain an "export const routes: Routes = [...]" declaration.`
+    );
   }
 
   const merged = entries.filter(entry => !source.includes(entry));
