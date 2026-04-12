@@ -1,4 +1,5 @@
 import { lowerBinding } from '../converter/expression-lowering';
+import { layoutToCssDeclarations } from '../converter/layout-resolver';
 import { UiBinding, UiEvent, UiNode } from '../schema/ui-schema';
 import { DiagnosticsEmitter, HtmlRenderer, RenderContext } from './renderer-contract';
 
@@ -48,6 +49,51 @@ function renderBoundAttribute(name: string, expression: string): string {
   return `[${name}]='${escapedExpression}'`;
 }
 
+function isFlowLayoutContainer(node: UiNode | undefined): boolean {
+  if (!node) return false;
+
+  return Boolean(
+    node.meta?.orientation === 'row' ||
+    node.meta?.orientation === 'column' ||
+    node.meta?.layoutKind === 'row-layout' ||
+    node.meta?.layoutKind === 'column-layout' ||
+    node.meta?.layoutKind === 'stack' ||
+    node.meta?.layoutKind === 'grid' ||
+    node.meta?.layoutKind === 'flexbox'
+  );
+}
+
+function escapeHtmlAttribute(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;');
+}
+
+function renderStyleAttribute(node: UiNode, parent: UiNode | undefined): string {
+  if (!node.layout || !parent) return '';
+
+  const layout = isFlowLayoutContainer(parent)
+    ? {
+        ...node.layout,
+        fillParent: false,
+        centerInParent: false,
+        anchorLeftParent: false,
+        anchorRightParent: false,
+        anchorTopParent: false,
+        anchorBottomParent: false,
+        absoluteX: undefined,
+        absoluteY: undefined
+      }
+    : node.layout;
+
+  const declarations = layoutToCssDeclarations(layout);
+  if (!declarations.length) {
+    return '';
+  }
+
+  return ` style="${escapeHtmlAttribute(declarations.join(' '))}"`;
+}
+
 function containerClassName(node: UiNode): string {
   if (node.meta?.role === 'window') return 'qml-window';
   if (node.meta?.role === 'structural') return 'qml-structural';
@@ -94,23 +140,28 @@ function renderEvents(node: UiNode, context: RenderContext): string {
   return renderedEvents.length > 0 ? ` ${renderedEvents.join(' ')}` : '';
 }
 
-function renderNode(node: UiNode, context: RenderContext, diagnosticsEmitter: DiagnosticsEmitter): string {
+function renderNode(
+  node: UiNode,
+  context: RenderContext,
+  diagnosticsEmitter: DiagnosticsEmitter,
+  parent?: UiNode
+): string {
   switch (node.kind) {
     case 'container': {
       const className = containerClassName(node);
-      const content = node.children.map(child => renderNode(child, context, diagnosticsEmitter)).filter(Boolean).join('\n');
-      return `<div class="${className}"${renderEvents(node, context)}>${content ? `\n${content}\n` : ''}</div>`;
+      const content = node.children.map(child => renderNode(child, context, diagnosticsEmitter, node)).filter(Boolean).join('\n');
+      return `<div class="${className}"${renderStyleAttribute(node, parent)}${renderEvents(node, context)}>${content ? `\n${content}\n` : ''}</div>`;
     }
 
     case 'text': {
       const textExpr = bindingLiteralOrExpr(node.text, 'text', context);
-      return `<span${renderEvents(node, context)}>{{ ${textExpr} }}</span>`;
+      return `<span${renderStyleAttribute(node, parent)}${renderEvents(node, context)}>{{ ${textExpr} }}</span>`;
     }
 
     case 'input': {
       const placeholderExpr = bindingLiteralOrExpr(node.placeholder, 'placeholder', context);
       return [
-        `<mat-form-field appearance="outline"${renderEvents(node, context)}>`,
+        `<mat-form-field appearance="outline"${renderStyleAttribute(node, parent)}${renderEvents(node, context)}>`,
         `  <input matInput ${renderBoundAttribute('placeholder', placeholderExpr)}>`,
         '</mat-form-field>'
       ].join('\n');
@@ -118,12 +169,12 @@ function renderNode(node: UiNode, context: RenderContext, diagnosticsEmitter: Di
 
     case 'image': {
       const sourceExpr = bindingLiteralOrExpr(node.source, 'imageSource', context);
-      return `<img class="qml-image"${renderEvents(node, context)} ${renderBoundAttribute('src', sourceExpr)}>`;
+      return `<img class="qml-image"${renderStyleAttribute(node, parent)}${renderEvents(node, context)} ${renderBoundAttribute('src', sourceExpr)}>`;
     }
 
     case 'button': {
       const textExpr = bindingLiteralOrExpr(node.text, 'buttonText', context);
-      return `<button mat-raised-button${renderEvents(node, context)}>{{ ${textExpr} }}</button>`;
+      return `<button mat-raised-button${renderStyleAttribute(node, parent)}${renderEvents(node, context)}>{{ ${textExpr} }}</button>`;
     }
 
     case 'animation':

@@ -3,6 +3,7 @@ import { Rule, SchematicContext, Tree } from '@angular-devkit/schematics';
 import { parseQml } from '../../lib/qml/parser';
 import { qmlToUiDocument } from '../../lib/converter/qml-to-ui';
 import { renderAngularMaterial } from '../../lib/angular/material-renderer';
+import { formatDiagnostic } from '../../lib/schema/ui-schema';
 import {
   planComponentOutput,
   qmlSourceDirectory,
@@ -40,7 +41,7 @@ export function qmlComponentSchematic(options: Options): Rule {
     updateRouteFile(tree, [componentPlan]);
 
     if (document.diagnostics.length) {
-      context.logger.warn(document.diagnostics.join('\n'));
+      context.logger.warn(document.diagnostics.map(formatDiagnostic).join('\n'));
     }
 
     context.logger.info(`Generated: ${componentPlan.componentDirectory}`);

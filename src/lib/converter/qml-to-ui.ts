@@ -1,4 +1,4 @@
-import { QmlDocument, QmlObjectNode, QmlProperty, QmlHandler } from '../qml/ast';
+import { QmlDocument, QmlObjectNode, QmlProperty, QmlHandler, QmlImport } from '../qml/ast';
 import { UiDocument, UiNode, UiDiagnostic, UiStateDeclaration, createDiagnostic, SourceRange } from '../schema/ui-schema';
 import {
   PassContext,
@@ -177,6 +177,58 @@ function handlersToEvents(handlers: QmlHandler[]) {
   });
 }
 
+function collectLayoutTypeNames(node: QmlObjectNode, types = new Set<string>()): Set<string> {
+  if (['RowLayout', 'ColumnLayout', 'StackLayout', 'GridLayout', 'FlexboxLayout'].includes(node.typeName)) {
+    types.add(node.typeName);
+  }
+
+  node.children.forEach(child => collectLayoutTypeNames(child, types));
+  node.properties.forEach(property => {
+    if (property.embeddedObject) {
+      collectLayoutTypeNames(property.embeddedObject, types);
+    }
+  });
+
+  return types;
+}
+
+function diagnoseQtQuickLayoutsImport(
+  imports: QmlImport[],
+  root: QmlObjectNode,
+  diagnostics: UiDiagnostic[],
+  filePath?: string
+): void {
+  if (!imports.some(entry => entry.module === 'QtQuick.Layouts')) {
+    return;
+  }
+
+  const layoutTypes = [...collectLayoutTypeNames(root)].sort((a, b) => a.localeCompare(b));
+  if (layoutTypes.length === 0) {
+    diagnostics.push(
+      createDiagnostic(
+        'info',
+        'semantic',
+        'QtQuick.Layouts import detected. qml-ng will diagnose layout-only properties conservatively and avoid promising exact Qt fidelity.',
+        root.location,
+        filePath,
+        'QTQUICK_LAYOUTS_IMPORT'
+      )
+    );
+    return;
+  }
+
+  diagnostics.push(
+    createDiagnostic(
+      'info',
+      'semantic',
+      `QtQuick.Layouts types ${layoutTypes.join(', ')} are lowered approximately; qml-ng preserves flow intent and emits diagnostics for unsupported constraints.`,
+      root.location,
+      filePath,
+      'QTQUICK_LAYOUTS_APPROXIMATE'
+    )
+  );
+}
+
 /**
  * Converts a QML object node to a UiNode using the multi-pass architecture.
  *
@@ -200,7 +252,7 @@ export function qmlNodeToUi(
   const explicitHandlers = handlersToEvents(node.handlers);
   const events = [...propertyHandlers, ...explicitHandlers];
 
-  const layout = resolveLayout(node.properties);
+  const layout = resolveLayout(node.typeName, node.properties);
 
   // Build initial UiNode based on QML type
   const initialNode = buildInitialNode(node, layout, events, diagnostics, filePath);
@@ -332,6 +384,7 @@ function buildInitialNode(
  */
 export function qmlToUiDocument(name: string, qml: QmlDocument, filePath?: string): UiDocument {
   const diagnostics: UiDiagnostic[] = [];
+  diagnoseQtQuickLayoutsImport(qml.imports, qml.root, diagnostics, filePath);
   return {
     name,
     root: qmlNodeToUi(qml.root, diagnostics, filePath),

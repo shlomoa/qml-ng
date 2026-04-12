@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import { renderAngularMaterial } from './lib/angular/material-renderer';
 import { qmlToUiDocument } from './lib/converter/qml-to-ui';
 import { parseQml } from './lib/qml/parser';
+import { formatDiagnostic } from './lib/schema/ui-schema';
 
 function pascalCase(name: string): string {
   return name
@@ -34,4 +35,4 @@ console.log(rendered.html);
 console.log('----- SCSS -----');
 console.log(rendered.scss);
 console.log('----- DIAGNOSTICS -----');
-console.log(document.diagnostics.join('\n') || 'None');
+console.log(document.diagnostics.map(formatDiagnostic).join('\n') || 'None');
