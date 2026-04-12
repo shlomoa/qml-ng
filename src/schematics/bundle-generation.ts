@@ -3,9 +3,10 @@ import * as path from 'node:path';
 import { SchematicContext, Tree } from '@angular-devkit/schematics';
 import { renderAngularMaterial } from '../lib/angular/material-renderer';
 import { qmlToUiDocument } from '../lib/converter/qml-to-ui';
-import { parseQml } from '../lib/qml/parser';
+import { formatDiagnostics } from '../lib/diagnostics/formatter';
+import { parseQmlWithDiagnostics } from '../lib/qml/parser';
 import { collectResolvedQmlDependencies } from '../lib/qml/qml-resolution';
-import { createDiagnostic, UiDiagnostic, UiDocument, UiNode } from '../lib/schema/ui-schema';
+import { createDiagnostic, UiDocument, UiNode } from '../lib/schema/ui-schema';
 import {
   planComponentOutput,
   qmlComponentName,
@@ -239,16 +240,6 @@ function rewriteBundleAssetBindings(
   }
 }
 
-export function formatDiagnostics(diagnostics: UiDiagnostic[]): string[] {
-  // Keep schematic logging on one canonical, compact format so warnings stay deterministic across
-  // single-file and bundle-generation entry points.
-  return diagnostics.map(diagnostic => {
-    const severity = diagnostic.severity.toUpperCase();
-    const code = diagnostic.code ? ` ${diagnostic.code}` : '';
-    return `${severity}${code}: ${diagnostic.message}`;
-  });
-}
-
 export interface BundleGenerationResult {
   bundleRoot: string;
   qmlFiles: string[];
@@ -279,10 +270,15 @@ export function generateQmlBundle(
         qmlRelativeDirectory(source.bundleRoot, qmlFile)
       );
 
-      const document = qmlToUiDocument(componentName, parseQml(qmlSource, {
+      const parseResult = parseQmlWithDiagnostics(qmlSource, {
         filePath: qmlFile,
         searchRoots: [qmlSourceDirectory(qmlFile), source.bundleRoot]
-      }));
+      });
+      const converted = qmlToUiDocument(componentName, parseResult.document, qmlFile);
+      const document = {
+        ...converted,
+        diagnostics: [...parseResult.diagnostics, ...converted.diagnostics]
+      };
 
       rewriteBundleAssetBindings(document.root, document, tree, qmlFile, source.bundleRoot, componentPlan.assetRoot);
 

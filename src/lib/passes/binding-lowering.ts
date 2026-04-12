@@ -42,12 +42,8 @@ export class BindingLoweringPass implements LoweringPass {
       processedNode.text = this.ensureProperBinding(node.text);
     }
 
-    // Recursively process children
-    const processedChildren = node.children.map(child => this.transform(child, context));
-
     return {
-      ...processedNode,
-      children: processedChildren
+      ...processedNode
     };
   }
 
