@@ -25,12 +25,8 @@ export class ControlMappingPass implements LoweringPass {
     // Add specific metadata based on node kind and name
     processedNode = this.addControlMetadata(processedNode, context);
 
-    // Recursively process children
-    const processedChildren = node.children.map(child => this.transform(child, context));
-
     return {
-      ...processedNode,
-      children: processedChildren
+      ...processedNode
     };
   }
 

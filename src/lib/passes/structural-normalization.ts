@@ -81,13 +81,7 @@ export class StructuralNormalizationPass implements LoweringPass {
       );
     }
 
-    // Recursively process children
-    const processedChildren = node.children.map(child => this.transform(child, context));
-
-    return {
-      ...node,
-      children: processedChildren
-    };
+    return node;
   }
 
   /**

@@ -11,6 +11,7 @@ export interface SourceRange {
 
 export type DiagnosticSeverity = 'error' | 'warning' | 'info';
 export type DiagnosticCategory = 'lexical' | 'syntax' | 'semantic' | 'unsupported';
+export type UiLayoutFidelity = 'exact' | 'approximate' | 'unsupported';
 
 export interface UiDiagnostic {
   severity: DiagnosticSeverity;
@@ -72,6 +73,23 @@ export interface UiEvent {
 export interface UiLayout {
   fillParent?: boolean;
   centerInParent?: boolean;
+  anchorLeftParent?: boolean;
+  anchorRightParent?: boolean;
+  anchorTopParent?: boolean;
+  anchorBottomParent?: boolean;
+  absoluteX?: string;
+  absoluteY?: string;
+  width?: string;
+  height?: string;
+  preferredWidth?: string;
+  preferredHeight?: string;
+  rules?: UiLayoutRule[];
+}
+
+export interface UiLayoutRule {
+  source: string;
+  fidelity: UiLayoutFidelity;
+  detail: string;
 }
 
 export interface UiNode {
@@ -105,4 +123,24 @@ export function createDiagnostic(
   code?: string
 ): UiDiagnostic {
   return { severity, category, message, location, file, code };
+}
+
+export function formatDiagnostic(diagnostic: UiDiagnostic): string {
+  const formattedLocation = diagnostic.location
+    ? `${diagnostic.location.start.line}:${diagnostic.location.start.column}`
+    : undefined;
+  const code = diagnostic.code ? `:${diagnostic.code}` : '';
+  const filePrefix = formatDiagnosticFileLocation(diagnostic.file, formattedLocation);
+  return `${diagnostic.severity}${code}: ${filePrefix}${diagnostic.message}`;
+}
+
+function formatDiagnosticFileLocation(file: string | undefined, formattedLocation: string | undefined): string {
+  if (!file && !formattedLocation) {
+    return '';
+  }
+
+  const filePart = file ?? '';
+  const separator = file && formattedLocation ? ':' : '';
+  const locationPart = formattedLocation ?? '';
+  return `${filePart}${separator}${locationPart}: `;
 }

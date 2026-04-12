@@ -51,5 +51,5 @@ Current categories are:
 
 - `unknown` → explicit placeholder output so unsupported controls such as `CheckBox`,
   `SvgPathItem`, `ShaderEffect`, and `FastBlur` stay visible in generated HTML and diagnostics
-- `animation` → intentional no-op emission for non-visual nodes that are recognized but not
-  yet represented in Angular output
+- `animation` → skipped markup with an optional HTML comment marker for non-visual nodes that
+  are recognized but not yet represented in Angular output
