@@ -149,11 +149,11 @@ export class HandlerLoweringPass implements LoweringPass {
     }
 
     let duplicateCounter = 2;
-    let candidate = `${baseName}_${duplicateCounter}`;
-    while (this.usedMethodNames.has(candidate)) {
-      duplicateCounter += 1;
+    let candidate: string;
+    do {
       candidate = `${baseName}_${duplicateCounter}`;
-    }
+      duplicateCounter += 1;
+    } while (this.usedMethodNames.has(candidate));
 
     this.usedMethodNames.add(candidate);
     return candidate;

@@ -48,8 +48,10 @@ function compareDiagnostics(left: UiDiagnostic, right: UiDiagnostic): number {
     return leftFile.localeCompare(rightFile);
   }
 
-  const leftPosition = left.location?.start.position ?? Number.MAX_SAFE_INTEGER;
-  const rightPosition = right.location?.start.position ?? Number.MAX_SAFE_INTEGER;
+  // Diagnostics without source positions sort after positioned diagnostics so
+  // per-file summaries stay stable and anchored to the most actionable entries.
+  const leftPosition = left.location?.start.position ?? Number.POSITIVE_INFINITY;
+  const rightPosition = right.location?.start.position ?? Number.POSITIVE_INFINITY;
   if (leftPosition !== rightPosition) {
     return leftPosition - rightPosition;
   }

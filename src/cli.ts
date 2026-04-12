@@ -16,6 +16,8 @@ interface CliOptions {
   verbose: boolean;
 }
 
+const MAX_DIFF_MATRIX_CELLS = 250_000;
+
 function printUsage(): void {
   console.error(
     [
@@ -99,9 +101,7 @@ function readExistingFile(filePath: string): string {
 
 type DiffOperation = { type: 'equal' | 'add' | 'remove'; line: string };
 
-function diffLines(before: string, after: string): DiffOperation[] {
-  const left = before.split('\n');
-  const right = after.split('\n');
+function diffLines(left: string[], right: string[]): DiffOperation[] {
   const matrix = Array.from({ length: left.length + 1 }, () => Array<number>(right.length + 1).fill(0));
 
   for (let i = left.length - 1; i >= 0; i -= 1) {
@@ -148,7 +148,17 @@ function renderDiff(filePath: string, before: string, after: string): string {
     return `No changes: ${filePath}`;
   }
 
-  const diff = diffLines(before, after)
+  const left = before.split('\n');
+  const right = after.split('\n');
+  if ((left.length + 1) * (right.length + 1) > MAX_DIFF_MATRIX_CELLS) {
+    return [
+      `--- ${filePath}`,
+      `+++ ${filePath}`,
+      `# qml-ng diff fallback: file too large for detailed line diff (${left.length} -> ${right.length} lines)`
+    ].join('\n');
+  }
+
+  const diff = diffLines(left, right)
     .map(operation => {
       const prefix = operation.type === 'equal'
         ? ' '
