@@ -42,3 +42,5 @@ pnpm-debug.log*
 .vscode/
 .DS_Store
 Thumbs.db
+
+.qml-ng-cache/
