@@ -53,9 +53,11 @@ function readQmlProjectEntries(projectFile: string): { mainFile: string; mainUiF
   const mainUiFile = source.match(/^\s*mainUiFile:\s*"([^"]+)"/m)?.[1];
 
   if (!mainFile || !mainUiFile) {
-    throw new Error(
-      `Could not read ${!mainFile && !mainUiFile ? 'mainFile or mainUiFile' : !mainFile ? 'mainFile' : 'mainUiFile'} from ${projectFile}`
-    );
+    const missingFields = [
+      ...(!mainFile ? ['mainFile'] : []),
+      ...(!mainUiFile ? ['mainUiFile'] : [])
+    ];
+    throw new Error(`Could not read ${missingFields.join(' and ')} from ${projectFile}`);
   }
 
   return { mainFile, mainUiFile };
@@ -114,6 +116,7 @@ function resolveBundleSource(options: BundleGenerationOptions): BundleSource {
  */
 function computeRuntimeAssetPath(assetRoot: string, relativeAssetPath: string): string | undefined {
   const normalizedRoot = assetRoot.replace(/\\/g, '/');
+  const normalizedRelativePath = path.posix.normalize(relativeAssetPath.replace(/\\/g, '/'));
   const sourceRootMarker = '/src/';
   const markerIndex = normalizedRoot.indexOf(sourceRootMarker);
 
@@ -123,8 +126,12 @@ function computeRuntimeAssetPath(assetRoot: string, relativeAssetPath: string): 
     return undefined;
   }
 
+  if (normalizedRelativePath.startsWith('../') || normalizedRelativePath === '..') {
+    return undefined;
+  }
+
   const publicRoot = normalizedRoot.slice(markerIndex + sourceRootMarker.length).replace(/^\/+/, '');
-  return path.posix.join(publicRoot, ...relativeAssetPath.replace(/\\/g, '/').split('/').filter(Boolean));
+  return path.posix.join(publicRoot, ...normalizedRelativePath.split('/').filter(Boolean));
 }
 
 /**

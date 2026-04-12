@@ -104,8 +104,11 @@ export function updateGeneratedProjectArtifacts(
 }
 
 function componentLabel(plan: WorkspaceComponentPlan): string {
-  // Error messages use the generated class stem instead of the full Angular class name suffix.
-  return plan.className.replace(/Component$/, '');
+  // Generated component classes are expected to use the `<Name>Component` convention; when they
+  // do, error messages show the friendlier class stem and otherwise fall back to the full name.
+  return plan.className.endsWith('Component')
+    ? plan.className.replace(/Component$/, '')
+    : plan.className;
 }
 
 export function validateGeneratedProject(
