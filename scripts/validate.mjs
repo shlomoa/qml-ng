@@ -105,11 +105,14 @@ async function loadBuiltModules() {
   const resolver = await import(pathToFileURL(path.join(repoRoot, 'dist', 'lib', 'qml', 'qml-resolution.js')).href);
   const converter = await import(pathToFileURL(path.join(repoRoot, 'dist', 'lib', 'converter', 'qml-to-ui.js')).href);
   const renderer = await import(pathToFileURL(path.join(repoRoot, 'dist', 'lib', 'angular', 'material-renderer.js')).href);
+  const rendererContract = await import(pathToFileURL(path.join(repoRoot, 'dist', 'lib', 'angular', 'renderer-contract.js')).href);
   return {
     parseQml: parser.parseQml,
     collectResolvedQmlDependencies: resolver.collectResolvedQmlDependencies,
     qmlToUiDocument: converter.qmlToUiDocument,
-    renderAngularMaterial: renderer.renderAngularMaterial
+    renderAngularMaterial: renderer.renderAngularMaterial,
+    AngularMaterialRenderer: renderer.AngularMaterialRenderer,
+    createRenderContext: rendererContract.createRenderContext
   };
 }
 
@@ -221,6 +224,42 @@ function validateLayoutSamples(mods) {
   }
 }
 
+function validateRendererContract(mods) {
+  const document = mods.qmlToUiDocument(
+    'renderer-contract-sample',
+    mods.parseQml(
+      `Window {
+  property int currentIndex: 0
+
+  Column {
+    Image { source: "assets/logo.png" }
+
+    Button {
+      text: "Open"
+      onClicked: currentIndex = 1
+    }
+  }
+}`
+    )
+  );
+  const renderer = new mods.AngularMaterialRenderer();
+  const stateDeclarations = renderer.typescript.collectStateDeclarations(document.root);
+  const context = mods.createRenderContext(new Set(stateDeclarations.map(declaration => declaration.name)));
+  const html = renderer.html.render(document.root, context);
+  const ts = renderer.typescript.render(document, 'RendererContractSampleComponent', context, stateDeclarations);
+  const scss = renderer.scss.render(document.root);
+
+  assertContains(html, 'class="qml-window"', 'renderer contract HTML');
+  assertContains(html, 'class="qml-image"', 'renderer contract HTML');
+  assertContains(html, `[src]='"assets/logo.png"'`, 'renderer contract HTML');
+  assertContains(html, '(click)="handleClick1()"', 'renderer contract HTML');
+  assertContains(ts, 'standalone: true,', 'renderer contract TypeScript');
+  assertContains(ts, 'imports: [MatButtonModule],', 'renderer contract TypeScript');
+  assertContains(ts, 'readonly currentIndex = signal<number>(0);', 'renderer contract TypeScript');
+  assertContains(ts, 'handleClick1(): void {', 'renderer contract TypeScript');
+  assertContains(scss, '.qml-window {', 'renderer contract SCSS');
+}
+
 function validateRenderedCase(mods, testCase) {
   const { document, rendered } = convertAndRenderCase(mods, testCase);
   const renderedDiagnostics = formatDiagnostics(document);
@@ -286,6 +325,27 @@ const projects = [
 ];
 
 const renderedCases = [
+  {
+    label: 'figma app shell renders window',
+    filePath: path.join(repoRoot, 'examples', 'FigmaVariants', 'FigmaVariantsContent', 'App.qml'),
+    componentName: 'figma-variants-app',
+    className: 'FigmaVariantsAppComponent',
+    htmlContains: ['class="qml-window"'],
+    htmlNotContains: ['Unsupported node: Window'],
+    diagnosticsNotContains: ['Unsupported QML type: Window']
+  },
+  {
+    label: 'figma icons preview preserves asset images and surfaces unsupported graphics',
+    filePath: path.join(repoRoot, 'examples', 'FigmaVariants', 'FigmaVariantsContent', 'IconsPreview.ui.qml'),
+    componentName: 'figma-icons-preview',
+    className: 'FigmaIconsPreviewComponent',
+    htmlContains: [
+      'class="qml-image"',
+      `[src]='"assets/variantFrame_Icons_merged_child.png"'`,
+      'Unsupported node: SvgPathItem'
+    ],
+    diagnosticsContains: ['Unsupported QML type: SvgPathItem']
+  },
   {
     label: 'webinar app shell renders window',
     filePath: path.join(repoRoot, 'examples', 'WebinarDemo', 'WebinarDemoContent', 'App.qml'),
@@ -382,6 +442,9 @@ for (const testCase of renderedCases) {
 
 console.log('Rendering layout samples...');
 validateLayoutSamples(mods);
+
+console.log('Validating renderer contract...');
+validateRendererContract(mods);
 
 for (const testCase of eventModelCases) {
   console.log(`Modeling ${testCase.label}...`);
