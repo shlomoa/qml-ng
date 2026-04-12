@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/schema",
+  "$id": "MigrateGeneratedSchema",
+  "title": "Generated Output Migration Options",
+  "type": "object",
+  "properties": {
+    "path": {
+      "type": "string",
+      "description": "Legacy destination path override maintained for backward compatibility",
+      "deprecated": true
+    },
+    "project": {
+      "type": "string",
+      "description": "Angular workspace project to inspect"
+    },
+    "feature": {
+      "type": "string",
+      "description": "Feature folder under the target project's app root"
+    },
+    "updateBarrel": {
+      "type": "boolean",
+      "description": "Rewrite the feature barrel file to the current deterministic export format",
+      "default": true
+    },
+    "routeMode": {
+      "type": "string",
+      "description": "Rewrite route declarations for the discovered generated components",
+      "enum": ["none", "project", "feature"],
+      "default": "feature"
+    }
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/schema",
+  "$id": "ValidateGeneratedSchema",
+  "title": "Generated Project Validation Options",
+  "type": "object",
+  "properties": {
+    "qmlDir": {
+      "type": "string",
+      "description": "Optional QML bundle directory to compare against generated output"
+    },
+    "qmlProject": {
+      "type": "string",
+      "description": "Optional .qmlproject file whose reachable component graph should be compared against generated output"
+    },
+    "path": {
+      "type": "string",
+      "description": "Legacy destination path override maintained for backward compatibility",
+      "deprecated": true
+    },
+    "recursive": {
+      "type": "boolean",
+      "description": "Recursively process subdirectories when qmlDir is used",
+      "default": true
+    },
+    "project": {
+      "type": "string",
+      "description": "Angular workspace project to inspect"
+    },
+    "feature": {
+      "type": "string",
+      "description": "Feature folder under the target project's app root"
+    },
+    "updateBarrel": {
+      "type": "boolean",
+      "description": "Require the current barrel file conventions to be present",
+      "default": false
+    },
+    "routeMode": {
+      "type": "string",
+      "description": "Require the given route configuration to contain generated routes",
+      "enum": ["none", "project", "feature"],
+      "default": "none"
+    }
+  }
+}

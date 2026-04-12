@@ -10,6 +10,26 @@
       "description": "Generate Angular standalone components from a directory of QML files",
       "factory": "./dist/schematics/qml-batch/index#qmlBatchSchematic",
       "schema": "./src/schematics/qml-batch/schema.json"
+    },
+    "qml-feature": {
+      "description": "Generate an Angular feature from a QML bundle or qmlproject dependency graph",
+      "factory": "./dist/schematics/qml-feature/index#qmlFeatureSchematic",
+      "schema": "./src/schematics/qml-feature/schema.json"
+    },
+    "update-routes": {
+      "description": "Update generated route configuration for an Angular feature",
+      "factory": "./dist/schematics/update-routes/index#updateRoutesSchematic",
+      "schema": "./src/schematics/update-routes/schema.json"
+    },
+    "migrate-generated": {
+      "description": "Migrate existing generated files to the current barrel and route conventions",
+      "factory": "./dist/schematics/migrate-generated/index#migrateGeneratedSchematic",
+      "schema": "./src/schematics/migrate-generated/schema.json"
+    },
+    "validate-generated": {
+      "description": "Validate generated feature consistency against current workspace conventions",
+      "factory": "./dist/schematics/validate-generated/index#validateGeneratedSchematic",
+      "schema": "./src/schematics/validate-generated/schema.json"
     }
   }
 }
