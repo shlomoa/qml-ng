@@ -64,6 +64,42 @@ function assertNotContains(text, snippet, label) {
   }
 }
 
+function formatDiagnostics(document) {
+  const text = (document.diagnostics ?? [])
+    .map(diagnostic => `${diagnostic.severity}:${diagnostic.code ?? 'NO_CODE'}:${diagnostic.message}`)
+    .join('\n');
+  return text || 'None';
+}
+
+function convertAndRenderCase(mods, testCase) {
+  const source = testCase.source ?? fs.readFileSync(testCase.filePath, 'utf8');
+  const searchRoot = testCase.filePath
+    ? [path.dirname(path.dirname(testCase.filePath))]
+    : undefined;
+
+  const document = mods.qmlToUiDocument(
+    testCase.componentName,
+    mods.parseQml(source, testCase.filePath ? {
+      filePath: testCase.filePath,
+      searchRoots: searchRoot
+    } : undefined)
+  );
+  const rendered = mods.renderAngularMaterial(document, testCase.className);
+  return { document, rendered };
+}
+
+function collectEvents(node, events = []) {
+  for (const event of node.events ?? []) {
+    events.push(event);
+  }
+
+  for (const child of node.children ?? []) {
+    collectEvents(child, events);
+  }
+
+  return events;
+}
+
 async function loadBuiltModules() {
   const parser = await import(pathToFileURL(path.join(repoRoot, 'dist', 'lib', 'qml', 'parser.js')).href);
   const resolver = await import(pathToFileURL(path.join(repoRoot, 'dist', 'lib', 'qml', 'qml-resolution.js')).href);
@@ -185,17 +221,13 @@ function validateLayoutSamples(mods) {
   }
 }
 
-function validateRenderedFile(mods, testCase) {
-  const source = fs.readFileSync(testCase.filePath, 'utf8');
-  const document = mods.qmlToUiDocument(
-    testCase.componentName,
-    mods.parseQml(source, {
-      filePath: testCase.filePath,
-      searchRoots: [path.dirname(path.dirname(testCase.filePath))]
-    })
-  );
-  const rendered = mods.renderAngularMaterial(document, testCase.className);
-  assertContains(rendered.html, `<div class="`, `${testCase.label} HTML`);
+function validateRenderedCase(mods, testCase) {
+  const { document, rendered } = convertAndRenderCase(mods, testCase);
+  const renderedDiagnostics = formatDiagnostics(document);
+
+  if (testCase.expectContainer ?? true) {
+    assertContains(rendered.html, `<div class="`, `${testCase.label} HTML`);
+  }
 
   for (const snippet of testCase.htmlContains ?? []) {
     assertContains(rendered.html, snippet, `${testCase.label} HTML`);
@@ -205,12 +237,38 @@ function validateRenderedFile(mods, testCase) {
     assertNotContains(rendered.html, snippet, `${testCase.label} HTML`);
   }
 
+  for (const snippet of testCase.tsContains ?? []) {
+    assertContains(rendered.ts, snippet, `${testCase.label} TypeScript`);
+  }
+
+  for (const snippet of testCase.tsNotContains ?? []) {
+    assertNotContains(rendered.ts, snippet, `${testCase.label} TypeScript`);
+  }
+
   for (const snippet of testCase.diagnosticsContains ?? []) {
-    assertContains(document.diagnostics.join('\n') || 'None', snippet, `${testCase.label} diagnostics`);
+    assertContains(renderedDiagnostics, snippet, `${testCase.label} diagnostics`);
   }
 
   for (const snippet of testCase.diagnosticsNotContains ?? []) {
-    assertNotContains(document.diagnostics.join('\n') || 'None', snippet, `${testCase.label} diagnostics`);
+    assertNotContains(renderedDiagnostics, snippet, `${testCase.label} diagnostics`);
+  }
+}
+
+function validateEventModelCase(mods, testCase) {
+  const { document } = convertAndRenderCase(mods, testCase);
+  const events = collectEvents(document.root);
+
+  for (const expectedEvent of testCase.expectedEvents ?? []) {
+    const match = events.find(event => event.handler === expectedEvent.handler);
+    if (!match) {
+      throw new Error(`Expected ${testCase.label} to include handler:\n${expectedEvent.handler}`);
+    }
+
+    if (expectedEvent.behavior && match.behavior !== expectedEvent.behavior) {
+      throw new Error(
+        `Expected handler '${expectedEvent.handler}' in ${testCase.label} to have behavior '${expectedEvent.behavior}', got '${match.behavior ?? 'undefined'}'`
+      );
+    }
   }
 }
 
@@ -252,6 +310,52 @@ const renderedCases = [
     componentName: 'webinar-smallpopup',
     className: 'WebinarSmallpopupComponent',
     diagnosticsNotContains: ['Unsupported QML type: KeyframeGroup']
+  },
+  {
+    label: 'inline call handlers stay as safe template expressions',
+    source: `Item {\n  Button {\n    text: "Submit"\n    onClicked: submit()\n  }\n}`,
+    componentName: 'inline-handler-sample',
+    className: 'InlineHandlerSampleComponent',
+    htmlContains: ['(click)="submit()"'],
+    tsNotContains: ['handleClick1(): void'],
+    diagnosticsNotContains: ['UNSUPPORTED_HANDLER']
+  },
+  {
+    label: 'signal assignment handlers generate component methods',
+    source: `Item {\n  property int currentIndex: 0\n  Button {\n    text: "Go"\n    onClicked: currentIndex = 1\n  }\n}`,
+    componentName: 'assignment-handler-sample',
+    className: 'AssignmentHandlerSampleComponent',
+    htmlContains: ['(click)="handleClick1()"'],
+    htmlNotContains: ['currentIndex = 1'],
+    tsContains: [
+      'readonly currentIndex = signal<number>(0);',
+      'handleClick1(): void {',
+      'this.currentIndex.set(1);'
+    ],
+    diagnosticsContains: ['HANDLER_METHOD_STUB']
+  }
+];
+
+const eventModelCases = [
+  {
+    label: 'large example assignment handlers are modeled as generated methods',
+    filePath: path.join(repoRoot, 'examples', 'WebinarDemo', 'WebinarDemoContent', 'MainPanel.ui.qml'),
+    componentName: 'webinar-main-panel',
+    className: 'WebinarMainPanelComponent',
+    expectedEvents: [
+      { handler: 'stacklayoutframe.stacklayoutindex=0', behavior: 'method' },
+      { handler: 'stacklayoutframe.stacklayoutindex=1', behavior: 'method' },
+      { handler: 'stacklayoutframe.stacklayoutindex=2', behavior: 'method' }
+    ]
+  },
+  {
+    label: 'state-toggle handlers from large examples are modeled as generated methods',
+    filePath: path.join(repoRoot, 'examples', 'WebinarDemo', 'WebinarDemoContent', 'Burgermenu.ui.qml'),
+    componentName: 'webinar-burgermenu',
+    className: 'WebinarBurgermenuComponent',
+    expectedEvents: [
+      { handler: 'control.state="normal"', behavior: 'method' }
+    ]
   }
 ];
 
@@ -273,11 +377,16 @@ for (const result of results) {
 
 for (const testCase of renderedCases) {
   console.log(`Rendering ${testCase.label}...`);
-  validateRenderedFile(mods, testCase);
+  validateRenderedCase(mods, testCase);
 }
 
 console.log('Rendering layout samples...');
 validateLayoutSamples(mods);
+
+for (const testCase of eventModelCases) {
+  console.log(`Modeling ${testCase.label}...`);
+  validateEventModelCase(mods, testCase);
+}
 
 if (failures.length) {
   const message = failures

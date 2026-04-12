@@ -1,6 +1,9 @@
 import { lowerBinding } from '../converter/expression-lowering';
+import { extractDependencies } from '../qml/expression-analysis';
+import { ExpressionNode } from '../qml/expression-ast';
+import { ExpressionParser } from '../qml/expression-parser';
 import { layoutToScss } from '../converter/layout-resolver';
-import { UiBinding, UiDocument, UiNode, UiStateDeclaration } from '../schema/ui-schema';
+import { UiBinding, UiDocument, UiEvent, UiNode, UiStateDeclaration } from '../schema/ui-schema';
 import { collectMaterialImports } from './material-imports';
 
 export interface RenderedAngularComponent {
@@ -11,12 +14,17 @@ export interface RenderedAngularComponent {
 
 interface RenderContext {
   computedDeclarations: string[];
+  generatedMethods: string[];
   signalDeclarations: string[];
   dependencyNames: Set<string>;
   /** Names of signals already declared via typed property declarations */
   declaredSignalNames: Set<string>;
+  emittedMethodNames: Set<string>;
   exprCounter: number;
 }
+
+const ALLOWED_HANDLER_CALLEE_PREFIXES = ['Math.'];
+const IDENTIFIER_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 function bindingLiteralOrExpr(binding: UiBinding | undefined, fieldPrefix: string, ctx: RenderContext): string {
   if (!binding) return "''";
@@ -38,9 +46,118 @@ function bindingLiteralOrExpr(binding: UiBinding | undefined, fieldPrefix: strin
   return `${fieldName}()`;
 }
 
-function renderEvents(node: UiNode): string {
+function escapeTemplateEventExpression(expression: string): string {
+  return expression
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function normalizeWhitespaceForComment(handler: string): string {
+  return handler.replace(/\s+/g, ' ').trim();
+}
+
+function isAllowedHandlerCallee(callee: string): boolean {
+  return ALLOWED_HANDLER_CALLEE_PREFIXES.some(prefix => callee.startsWith(prefix));
+}
+
+function generateComponentMethodExpression(ast: ExpressionNode, declaredSignalNames: Set<string>): string {
+  switch (ast.kind) {
+    case 'literal':
+      return JSON.stringify(ast.value);
+
+    case 'identifier':
+      return declaredSignalNames.has(ast.name) ? `this.${ast.name}()` : ast.name;
+
+    case 'memberAccess':
+      return `${generateComponentMethodExpression(ast.object, declaredSignalNames)}${ast.optional ? '?.' : '.'}${ast.property}`;
+
+    case 'call':
+      return `${generateComponentMethodExpression(ast.callee, declaredSignalNames)}(${ast.arguments
+        .map(argument => generateComponentMethodExpression(argument, declaredSignalNames))
+        .join(', ')})`;
+
+    case 'unaryOp':
+      return `${ast.operator}${generateComponentMethodExpression(ast.argument, declaredSignalNames)}`;
+
+    case 'binaryOp':
+      return `${generateComponentMethodExpression(ast.left, declaredSignalNames)} ${ast.operator} ${generateComponentMethodExpression(ast.right, declaredSignalNames)}`;
+
+    case 'conditional':
+      return `${generateComponentMethodExpression(ast.test, declaredSignalNames)} ? ${generateComponentMethodExpression(ast.consequent, declaredSignalNames)} : ${generateComponentMethodExpression(ast.alternate, declaredSignalNames)}`;
+
+    case 'array':
+      return `[${ast.elements.map(element => generateComponentMethodExpression(element, declaredSignalNames)).join(', ')}]`;
+  }
+}
+
+function renderAssignmentMethod(event: UiEvent, ctx: RenderContext): string {
+  const model = event.handlerModel;
+  if (model?.kind !== 'assignment' || !event.generatedMethod) {
+    return '';
+  }
+
+  const targetIsSignal = IDENTIFIER_PATTERN.test(model.target) && ctx.declaredSignalNames.has(model.target);
+  if (targetIsSignal) {
+    const parser = new ExpressionParser();
+    const result = parser.parse(model.value);
+    if (result.ast && result.errors.length === 0) {
+      const dependencyInfo = extractDependencies(result.ast);
+      const hasUnverifiedIdentifiers = [...dependencyInfo.identifiers].some(identifier => !ctx.declaredSignalNames.has(identifier));
+      const usesUnsupportedCallee = [...dependencyInfo.callees].some(callee => !isAllowedHandlerCallee(callee));
+      if (!hasUnverifiedIdentifiers && !usesUnsupportedCallee) {
+        const valueExpression = generateComponentMethodExpression(result.ast, ctx.declaredSignalNames);
+        return [
+          `  ${event.generatedMethod.name}(): void {`,
+          `    this.${model.target}.set(${valueExpression});`,
+          '  }'
+        ].join('\n');
+      }
+    }
+  }
+
+  return [
+    `  ${event.generatedMethod.name}(): void {`,
+    `    // TODO(qml-ng): Translate QML handler: ${normalizeWhitespaceForComment(event.handler)}`,
+    '  }'
+  ].join('\n');
+}
+
+function ensureGeneratedMethod(event: UiEvent, ctx: RenderContext): void {
+  if (!event.generatedMethod || ctx.emittedMethodNames.has(event.generatedMethod.name)) {
+    return;
+  }
+
+  const methodSource = renderAssignmentMethod(event, ctx);
+  if (!methodSource) {
+    return;
+  }
+
+  ctx.emittedMethodNames.add(event.generatedMethod.name);
+  ctx.generatedMethods.push(methodSource);
+}
+
+function renderEvents(node: UiNode, ctx: RenderContext): string {
   if (!node.events.length) return '';
-  return ' ' + node.events.map(e => `(${e.angularEvent})="${e.handler}"`).join(' ');
+  const renderedEvents = node.events.flatMap(event => {
+    if (event.behavior === 'unsupported') {
+      return [];
+    }
+
+    if (event.behavior === 'method' && event.generatedMethod) {
+      ensureGeneratedMethod(event, ctx);
+      return [`(${event.angularEvent})="${escapeTemplateEventExpression(`${event.generatedMethod.name}()`)}"`];
+    }
+
+    if (event.behavior === 'inline' && event.handlerModel?.kind === 'call') {
+      return [`(${event.angularEvent})="${escapeTemplateEventExpression(event.handlerModel.expression)}"`];
+    }
+
+    return [];
+  });
+
+  return renderedEvents.length > 0 ? ` ${renderedEvents.join(' ')}` : '';
 }
 
 function renderBoundAttribute(name: string, expression: string): string {
@@ -70,18 +187,18 @@ function renderNode(node: UiNode, ctx: RenderContext): string {
     case 'container': {
       const className = containerClassName(node);
       const content = node.children.map(child => renderNode(child, ctx)).filter(Boolean).join('\n');
-      return `<div class="${className}"${renderEvents(node)}>${content ? `\n${content}\n` : ''}</div>`;
+      return `<div class="${className}"${renderEvents(node, ctx)}>${content ? `\n${content}\n` : ''}</div>`;
     }
 
     case 'text': {
       const textExpr = bindingLiteralOrExpr(node.text, 'text', ctx);
-      return `<span${renderEvents(node)}>{{ ${textExpr} }}</span>`;
+      return `<span${renderEvents(node, ctx)}>{{ ${textExpr} }}</span>`;
     }
 
     case 'input': {
       const placeholderExpr = bindingLiteralOrExpr(node.placeholder, 'placeholder', ctx);
       return [
-        `<mat-form-field appearance="outline"${renderEvents(node)}>`,
+        `<mat-form-field appearance="outline"${renderEvents(node, ctx)}>`,
         `  <input matInput ${renderBoundAttribute('placeholder', placeholderExpr)}>`,
         `</mat-form-field>`
       ].join('\n');
@@ -89,12 +206,12 @@ function renderNode(node: UiNode, ctx: RenderContext): string {
 
     case 'image': {
       const sourceExpr = bindingLiteralOrExpr(node.source, 'imageSource', ctx);
-      return `<img class="qml-image"${renderEvents(node)} ${renderBoundAttribute('src', sourceExpr)}>`;
+      return `<img class="qml-image"${renderEvents(node, ctx)} ${renderBoundAttribute('src', sourceExpr)}>`;
     }
 
     case 'button': {
       const textExpr = bindingLiteralOrExpr(node.text, 'buttonText', ctx);
-      return `<button mat-raised-button${renderEvents(node)}>{{ ${textExpr} }}</button>`;
+      return `<button mat-raised-button${renderEvents(node, ctx)}>{{ ${textExpr} }}</button>`;
     }
 
     case 'animation':
@@ -157,9 +274,11 @@ export function renderAngularMaterial(doc: UiDocument, className: string): Rende
 
   const ctx: RenderContext = {
     computedDeclarations: [],
+    generatedMethods: [],
     signalDeclarations: [],
     dependencyNames: new Set<string>(),
     declaredSignalNames,
+    emittedMethodNames: new Set<string>(),
     exprCounter: 0
   };
 
@@ -213,6 +332,7 @@ export function renderAngularMaterial(doc: UiDocument, className: string): Rende
     ...typedSignalLines.map(s => `  ${s}`),
     ...ctx.signalDeclarations.map(s => `  ${s}`),
     ...ctx.computedDeclarations.map(s => `  ${s}`),
+    ...ctx.generatedMethods,
     '}',
     ''
   ].join('\n');
