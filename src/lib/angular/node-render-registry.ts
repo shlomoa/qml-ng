@@ -161,7 +161,7 @@ function renderButton(node: UiNode, context: RenderContext): string {
 
 function renderAnimation(node: UiNode): string {
   return node.name
-    ? `<!-- qml-ng unsupported: ignored ${node.name.replace(/--/g, '—').trim()} node. -->`
+    ? `<!-- qml-ng: ignored ${node.name.replace(/--/g, '—').trim()} node. -->`
     : '';
 }
 
