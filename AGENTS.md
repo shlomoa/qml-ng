@@ -71,7 +71,7 @@ Keep work aligned with this pipeline:
   - `collection.json`
   - `src/schematics/*`
   - `README.md`
-  - `VALIDATION.md`
+  - `docs/VALIDATION.md`
 
 ## Important Files
 
@@ -86,9 +86,9 @@ Keep work aligned with this pipeline:
 - `src/lib/batch/batch-converter.ts`: CLI batch conversion and summary logic
 - `src/schematics/bundle-generation.ts`: shared multi-file schematic generation flow
 - `src/schematics/workspace-generation.ts`: workspace-aware destination planning, barrel updates, and route updates
-- `src/docs/conversion-coverage.md`: current mapping summary
-- `VALIDATION.md`: repository validation contract
-- `SCOPE.md`: versioned product-scope document
+- `docs/conversion-coverage.md`: current mapping summary
+- `docs/VALIDATION.md`: repository validation contract
+- `docs/SCOPE.md`: versioned product-scope document
 - `examples/login.qml`: fastest smoke test
 - `examples/FigmaVariants` and `examples/WebinarDemo`: larger regression and roadmap corpus
 
@@ -144,7 +144,7 @@ Examples include:
 - model/view controls such as `ListView`, `GridView`, `PathView`, and `Repeater`
 - unsupported layout constraints beyond the implemented subset
 
-For the fuller product boundary, use `SCOPE.md` as the source-of-truth scope document.
+For the fuller product boundary, use `docs/SCOPE.md` as the source-of-truth scope document.
 
 ## How To Work
 
@@ -182,6 +182,6 @@ Notes:
 
 - If you change parser syntax support, run `npm run validate`.
 - If you change CLI flags, output conventions, or diagnostics formatting, update `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `README.md`, and any affected schema/help text.
-- If you change renderer node coverage, update `src/docs/conversion-coverage.md`.
+- If you change renderer node coverage, update `docs/conversion-coverage.md`.
 - If you change schematic capabilities or options, update `collection.json`, the relevant schematic `schema.json`, and the docs that describe the workflow.
 - Keep unsupported behavior explicit. Silent semantic drift is worse than a warning or placeholder in this codebase.

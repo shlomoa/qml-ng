@@ -12,7 +12,7 @@ The design goal is not pixel-perfect Qt reproduction. The design goal is semanti
 - user interaction handlers
 - basic layout intent
 
-The repository now also carries a much larger example corpus under [`examples/FigmaVariants`](./examples/FigmaVariants) and [`examples/WebinarDemo`](./examples/WebinarDemo). Those projects introduce hundreds of QML files and a much wider set of building blocks, including custom controls, `QtQuick.Layouts`, `QtQuick.Templates`, state machines, timeline/keyframe constructs, graphics primitives, effects, and multi-file component bundles. They should be treated as architectural pressure tests and regression fixtures rather than as a statement of already-supported output.
+The repository now also carries a much larger example corpus under [`examples/FigmaVariants`](../examples/FigmaVariants) and [`examples/WebinarDemo`](../examples/WebinarDemo). Those projects introduce hundreds of QML files and a much wider set of building blocks, including custom controls, `QtQuick.Layouts`, `QtQuick.Templates`, state machines, timeline/keyframe constructs, graphics primitives, effects, and multi-file component bundles. They should be treated as architectural pressure tests and regression fixtures rather than as a statement of already-supported output.
 
 At the current snapshot, the example corpus is already large enough to act as a design constraint:
 
@@ -355,11 +355,13 @@ Treating the corpus this way helps keep the implementation honest without preten
 ## 10. Repository layout
 
 ```text
+docs/
+  ARCHITECTURE.md
+  PASSES.md
+  parser-architecture.md
 src/
   cli.ts
   index.ts
-  docs/
-    parser-architecture.md
   lib/
     qml/
       ast.ts

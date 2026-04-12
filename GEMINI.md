@@ -23,7 +23,7 @@ Use `AGENTS.md` as the main source of truth for repository status, scope, workfl
 - Prefer shared converter, pass, renderer, batch, and schematic helpers over one-off logic.
 - Keep parser support conservative and diagnostic-first.
 - Keep CLI, schematics, and docs aligned when commands, options, output layout, or diagnostic formatting change.
-- Update `src/docs/conversion-coverage.md` when node coverage meaningfully changes.
+- Update `docs/conversion-coverage.md` when node coverage meaningfully changes.
 
 ## Verification
 

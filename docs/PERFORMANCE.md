@@ -267,6 +267,6 @@ These features are planned for future production-quality releases:
 
 ## Related Documentation
 
-- [PLAN.md](./PLAN.md) - Step 14 describes the motivation for performance features
+- [PLAN.md](../PLAN.md) - Step 14 describes the motivation for performance features
 - [SCOPE.md](./SCOPE.md) - Example corpus classification and supported features
-- [AGENTS.md](./AGENTS.md) - Architecture and validation approach
+- [AGENTS.md](../AGENTS.md) - Architecture and validation approach

@@ -3,7 +3,7 @@
 This file now tracks only the roadmap work that is still materially incomplete on `main`.
 
 Completed items have moved from planning into the codebase, tests, docs, and schematics.
-Current references for shipped behavior live primarily in `AGENTS.md`, `README.md`, `SCOPE.md`, `VALIDATION.md`, and `PERFORMANCE.md`.
+Current references for shipped behavior live primarily in `AGENTS.md`, `README.md`, `docs/SCOPE.md`, `docs/VALIDATION.md`, and `docs/PERFORMANCE.md`.
 
 ## 1. Finish the remaining v1 control and interaction coverage
 
@@ -14,11 +14,11 @@ Priority items:
 
 - add a real mapping for `CheckBox` instead of leaving it under unsupported/placeholder output
 - continue closing the gap between recognized QML controls and renderer coverage for common form and interaction primitives
-- improve support for the still-partial v1 patterns called out in `SCOPE.md`, especially where the parser already preserves enough structure to lower them safely
+- improve support for the still-partial v1 patterns called out in `docs/SCOPE.md`, especially where the parser already preserves enough structure to lower them safely
 
 Definition of done:
 
-- `src/docs/conversion-coverage.md` no longer lists `CheckBox` as unsupported
+- `docs/conversion-coverage.md` no longer lists `CheckBox` as unsupported
 - renderer/import registry changes are wired through schema classification and Angular imports together
 - tests and snapshots cover the newly supported control paths
 
