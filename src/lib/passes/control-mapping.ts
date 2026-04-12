@@ -1,5 +1,7 @@
+import { getUiNodeRenderRule } from '../angular/node-render-registry';
 import { UiNode, createDiagnostic } from '../schema/ui-schema';
 import { LoweringPass, PassContext } from './pass-interface';
+import { StructuralNormalizationPass } from './structural-normalization';
 
 /**
  * Control Mapping Pass
@@ -73,16 +75,15 @@ export class ControlMappingPass implements LoweringPass {
    * Gets Angular Material component mapping for a QML control.
    */
   static getAngularMapping(qmlType: string): string | undefined {
-    const mappings: Record<string, string> = {
-      'Button': 'mat-raised-button',
-      'TextField': 'mat-form-field + mat-input',
-      'Text': 'span or p',
-      'Image': 'img',
-      'Column': 'flex column',
-      'Row': 'flex row',
-      'ColumnLayout': 'flex column',
-      'RowLayout': 'flex row'
-    };
-    return mappings[qmlType];
+    const kind = StructuralNormalizationPass.classifyNodeKind(qmlType);
+    const rule = getUiNodeRenderRule({
+      kind,
+      name: qmlType,
+      events: [],
+      children: [],
+      ...(kind === 'container' ? { meta: StructuralNormalizationPass.classifyContainerMeta(qmlType) } : {})
+    });
+
+    return rule.rendererKind === 'none' ? undefined : rule.templateDescription;
   }
 }
