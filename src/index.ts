@@ -1,5 +1,5 @@
 export * from './lib/qml/ast';
-export * from './lib/qml/tokenizer';
+export { tokenizeQml, Token, TokenKind, SourceLocation as TokenSourceLocation } from './lib/qml/tokenizer';
 export * from './lib/qml/parser';
 export * from './lib/schema/ui-schema';
 export * from './lib/converter/expression-lowering';

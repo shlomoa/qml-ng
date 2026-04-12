@@ -13,10 +13,17 @@ export type TokenKind =
   | 'eof'
   | 'other';
 
+export interface SourceLocation {
+  line: number;
+  column: number;
+  position: number;
+}
+
 export interface Token {
   kind: TokenKind;
   value: string;
   position: number;
+  location: SourceLocation;
 }
 
 function isAlpha(ch: string): boolean {
@@ -31,12 +38,31 @@ function isDigit(ch: string): boolean {
   return /[0-9]/.test(ch);
 }
 
+function computeLocation(source: string, position: number): SourceLocation {
+  let line = 1;
+  let column = 1;
+  for (let i = 0; i < position && i < source.length; i++) {
+    if (source[i] === '\n') {
+      line++;
+      column = 1;
+    } else {
+      column++;
+    }
+  }
+  return { line, column, position };
+}
+
 export function tokenizeQml(source: string): Token[] {
   const tokens: Token[] = [];
   let i = 0;
 
   const push = (kind: TokenKind, value: string, position: number) => {
-    tokens.push({ kind, value, position });
+    tokens.push({
+      kind,
+      value,
+      position,
+      location: computeLocation(source, position)
+    });
   };
 
   while (i < source.length) {
