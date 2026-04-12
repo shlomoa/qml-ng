@@ -1,4 +1,5 @@
 import { QmlProperty, QmlValue } from '../qml/ast';
+import { hasAbsolutePositioning } from '../layout/layout-utils';
 import { UiLayout, UiLayoutRule } from '../schema/ui-schema';
 
 const LAYOUT_CONTAINER_RULES: Record<string, UiLayoutRule | undefined> = {
@@ -211,18 +212,7 @@ export function layoutToCssDeclarations(layout: UiLayout | undefined): string[] 
   if (!layout) return [];
 
   const declarations: string[] = [];
-  const needsAbsolutePositioning = Boolean(
-    layout.fillParent ||
-    layout.centerInParent ||
-    layout.anchorLeftParent ||
-    layout.anchorRightParent ||
-    layout.anchorTopParent ||
-    layout.anchorBottomParent ||
-    layout.absoluteX ||
-    layout.absoluteY
-  );
-
-  if (needsAbsolutePositioning) {
+  if (hasAbsolutePositioning(layout)) {
     declarations.push('position: absolute;');
   }
 

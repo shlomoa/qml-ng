@@ -126,11 +126,11 @@ export function createDiagnostic(
 }
 
 export function formatDiagnostic(diagnostic: UiDiagnostic): string {
-  const location = diagnostic.location
+  const formattedLocation = diagnostic.location
     ? `${diagnostic.location.start.line}:${diagnostic.location.start.column}`
     : undefined;
   const code = diagnostic.code ? `:${diagnostic.code}` : '';
   const file = diagnostic.file ?? '';
-  const filePrefix = file || location ? `${file}${file && location ? ':' : ''}${location ?? ''}: ` : '';
+  const filePrefix = file || formattedLocation ? `${file}${file && formattedLocation ? ':' : ''}${formattedLocation ?? ''}: ` : '';
   return `${diagnostic.severity}${code}: ${filePrefix}${diagnostic.message}`;
 }

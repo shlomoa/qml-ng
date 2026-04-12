@@ -1,27 +1,6 @@
+import { hasAbsolutePositioning, hasHorizontalAbsoluteConflict, hasVerticalAbsoluteConflict, isFlowLayoutContainer } from '../layout/layout-utils';
 import { UiLayout, UiNode, createDiagnostic } from '../schema/ui-schema';
 import { LoweringPass, PassContext } from './pass-interface';
-
-function isFlowLayoutContainer(node: UiNode | undefined): boolean {
-  if (!node) return false;
-
-  return Boolean(
-    node.meta?.orientation === 'row' ||
-    node.meta?.orientation === 'column' ||
-    node.meta?.layoutKind === 'row-layout' ||
-    node.meta?.layoutKind === 'column-layout' ||
-    node.meta?.layoutKind === 'stack' ||
-    node.meta?.layoutKind === 'grid' ||
-    node.meta?.layoutKind === 'flexbox'
-  );
-}
-
-function hasHorizontalAbsoluteConflict(layout: UiLayout): boolean {
-  return Boolean(layout.fillParent || layout.centerInParent || layout.anchorLeftParent || layout.anchorRightParent);
-}
-
-function hasVerticalAbsoluteConflict(layout: UiLayout): boolean {
-  return Boolean(layout.fillParent || layout.centerInParent || layout.anchorTopParent || layout.anchorBottomParent);
-}
 
 /**
  * Layout Lowering Pass
@@ -106,16 +85,7 @@ export class LayoutLoweringPass implements LoweringPass {
       );
     }
 
-    if (isFlowLayoutContainer(parent) && (
-      layout.fillParent ||
-      layout.centerInParent ||
-      layout.anchorLeftParent ||
-      layout.anchorRightParent ||
-      layout.anchorTopParent ||
-      layout.anchorBottomParent ||
-      layout.absoluteX ||
-      layout.absoluteY
-    )) {
+    if (isFlowLayoutContainer(parent) && hasAbsolutePositioning(layout)) {
       context.diagnostics.push(
         createDiagnostic(
           'warning',

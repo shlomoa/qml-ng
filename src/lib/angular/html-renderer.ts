@@ -1,5 +1,6 @@
 import { lowerBinding } from '../converter/expression-lowering';
 import { layoutToCssDeclarations } from '../converter/layout-resolver';
+import { isFlowLayoutContainer } from '../layout/layout-utils';
 import { UiBinding, UiEvent, UiNode } from '../schema/ui-schema';
 import { DiagnosticsEmitter, HtmlRenderer, RenderContext } from './renderer-contract';
 
@@ -47,20 +48,6 @@ function renderBoundAttribute(name: string, expression: string): string {
     .replace(/&/g, '&amp;')
     .replace(/'/g, '&#39;');
   return `[${name}]='${escapedExpression}'`;
-}
-
-function isFlowLayoutContainer(node: UiNode | undefined): boolean {
-  if (!node) return false;
-
-  return Boolean(
-    node.meta?.orientation === 'row' ||
-    node.meta?.orientation === 'column' ||
-    node.meta?.layoutKind === 'row-layout' ||
-    node.meta?.layoutKind === 'column-layout' ||
-    node.meta?.layoutKind === 'stack' ||
-    node.meta?.layoutKind === 'grid' ||
-    node.meta?.layoutKind === 'flexbox'
-  );
 }
 
 function escapeHtmlAttribute(value: string): string {
