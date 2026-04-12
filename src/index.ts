@@ -1,12 +1,10 @@
 export * from './lib/qml/ast';
 export { tokenizeQml, Token, TokenKind, SourceLocation as TokenSourceLocation } from './lib/qml/tokenizer';
 export * from './lib/qml/parser';
-export { parseQmlV2, QmlParseResult } from './lib/qml/parser-v2';
 export * from './lib/schema/ui-schema';
 export * from './lib/converter/expression-lowering';
 export * from './lib/converter/event-mapper';
 export * from './lib/converter/layout-resolver';
 export * from './lib/converter/qml-to-ui';
-export { qmlToUiDocument as qmlToUiDocumentV2 } from './lib/converter/qml-to-ui-v2';
 export * from './lib/angular/material-imports';
 export * from './lib/angular/material-renderer';
