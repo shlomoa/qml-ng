@@ -8,7 +8,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { convertQmlBatch, findQmlFiles } from '../dist/lib/converter/batch-converter.js';
+import { collectQmlFiles, convertQmlFile, summarizeBatch } from '../dist/lib/batch/batch-converter.js';
 import { PerformanceTracker } from '../dist/lib/perf/performance-tracker.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -54,14 +54,19 @@ async function runBenchmark(config) {
       return null;
     }
 
-    const excludePatterns = (config.exclude || []).map(
-      ex => new RegExp(ex.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
-    );
+    // Use collectQmlFiles with manual depth filtering
+    qmlFiles = collectQmlFiles(config.dir, config.maxDepth !== 1);
 
-    qmlFiles = findQmlFiles(config.dir, {
-      maxDepth: config.maxDepth,
-      exclude: excludePatterns,
-    });
+    // Filter by exclude patterns
+    if (config.exclude && config.exclude.length > 0) {
+      const excludePatterns = config.exclude.map(
+        ex => new RegExp(ex.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+      );
+      qmlFiles = qmlFiles.filter(filePath => {
+        const relativePath = path.relative(config.dir, filePath);
+        return !excludePatterns.some(pattern => pattern.test(relativePath));
+      });
+    }
 
     if (config.maxFiles && qmlFiles.length > config.maxFiles) {
       qmlFiles = qmlFiles.slice(0, config.maxFiles);
@@ -78,97 +83,50 @@ async function runBenchmark(config) {
 
   // Run conversion with performance tracking
   const startTime = performance.now();
-  const batchResult = await convertQmlBatch(qmlFiles, {
-    trackPerformance: true,
-    continueOnError: true,
-    onProgress: (current, total, file) => {
-      const basename = path.basename(file);
-      process.stdout.write(`\rProcessing ${current}/${total}: ${basename.padEnd(40).slice(0, 40)}`);
-    },
-  });
+  const results = [];
+
+  for (let i = 0; i < qmlFiles.length; i++) {
+    const filePath = qmlFiles[i];
+    const basename = path.basename(filePath);
+    process.stdout.write(`\rProcessing ${i + 1}/${qmlFiles.length}: ${basename.padEnd(40).slice(0, 40)}`);
+
+    try {
+      const result = convertQmlFile(filePath, {
+        rootDir: config.dir ?? path.dirname(filePath),
+        trackPerformance: true
+      });
+      results.push(result);
+    } catch (error) {
+      // Continue on error
+      console.error(`\nError processing ${basename}: ${error.message}`);
+    }
+  }
+
   const totalTime = performance.now() - startTime;
 
   console.log('\n');
 
   // Summary
+  const summary = summarizeBatch(results);
   console.log('Results:');
-  console.log(`  Total files: ${batchResult.totalFiles}`);
-  console.log(`  Successful: ${batchResult.successCount}`);
-  console.log(`  Errors: ${batchResult.errorCount}`);
+  console.log(`  Total files: ${summary.totalFiles}`);
+  console.log(`  Supported: ${summary.supportedFiles}`);
+  console.log(`  Approximated: ${summary.approximatedFiles}`);
+  console.log(`  Unsupported: ${summary.unsupportedFiles}`);
   console.log(`  Total time: ${totalTime.toFixed(2)}ms`);
-  console.log(`  Average per file: ${(totalTime / batchResult.totalFiles).toFixed(2)}ms`);
+  console.log(`  Average per file: ${(totalTime / summary.totalFiles).toFixed(2)}ms`);
 
-  // Aggregate stage metrics
-  const aggregateStages = {};
-  if (batchResult.results.length > 0) {
-
-    for (const result of batchResult.results) {
-      if (result.tracker) {
-        const stages = result.tracker.getStages();
-        for (const stage of stages) {
-          if (!aggregateStages[stage.name]) {
-            aggregateStages[stage.name] = {
-              name: stage.name,
-              totalDuration: 0,
-              count: 0,
-              totalMemoryDelta: 0,
-              memoryCount: 0,
-            };
-          }
-          aggregateStages[stage.name].totalDuration += stage.duration || 0;
-          aggregateStages[stage.name].count += 1;
-          if (stage.memoryDelta !== undefined) {
-            aggregateStages[stage.name].totalMemoryDelta += stage.memoryDelta;
-            aggregateStages[stage.name].memoryCount += 1;
-          }
-        }
-      }
-    }
-
-    console.log('\nAverage stage timings:');
-    for (const [name, data] of Object.entries(aggregateStages)) {
-      const avgDuration = data.totalDuration / data.count;
-      const avgMemory = data.memoryCount > 0 ? data.totalMemoryDelta / data.memoryCount : 0;
-      console.log(`  ${name}:`);
-      console.log(`    Avg duration: ${avgDuration.toFixed(2)}ms`);
-      if (data.memoryCount > 0) {
-        const sign = avgMemory >= 0 ? '+' : '';
-        console.log(`    Avg memory delta: ${sign}${avgMemory.toFixed(2)}MB`);
-      }
-    }
-  }
-
-  // Error summary
-  if (batchResult.errorCount > 0) {
-    console.log('\nErrors encountered:');
-    const errorResults = batchResult.results.filter(r => !r.success);
-    for (const result of errorResults.slice(0, 5)) {
-      console.log(`  ${path.basename(result.inputPath)}: ${result.error}`);
-    }
-    if (errorResults.length > 5) {
-      console.log(`  ... and ${errorResults.length - 5} more`);
-    }
-  }
-
-  // Memory summary
-  const peakMemories = batchResult.results
-    .filter(r => r.tracker)
-    .map(r => r.tracker.getPeakMemory())
-    .filter(m => m > 0);
-
-  if (peakMemories.length > 0) {
-    const avgPeak = peakMemories.reduce((a, b) => a + b, 0) / peakMemories.length;
-    const maxPeak = Math.max(...peakMemories);
-    console.log('\nMemory usage:');
-    console.log(`  Average peak: ${avgPeak.toFixed(2)}MB`);
-    console.log(`  Maximum peak: ${maxPeak.toFixed(2)}MB`);
+  // Performance metrics if available
+  if (summary.performanceMetrics) {
+    console.log('\nPerformance Metrics:');
+    console.log(PerformanceTracker.formatReport(summary.performanceMetrics));
   }
 
   return {
     config,
-    batchResult,
-    totalTime,
-    aggregateStages,
+    results,
+    summary,
+    totalTime
   };
 }
 
@@ -176,12 +134,12 @@ async function main() {
   console.log('QML-to-Angular Converter Performance Benchmark');
   console.log('='.repeat(60));
 
-  const results = [];
+  const benchmarkResults = [];
 
   for (const config of BENCHMARK_CONFIGS) {
     const result = await runBenchmark(config);
     if (result) {
-      results.push(result);
+      benchmarkResults.push(result);
     }
   }
 
@@ -191,20 +149,23 @@ async function main() {
   console.log('='.repeat(60));
 
   let totalProcessed = 0;
-  let totalSuccessful = 0;
-  let totalErrors = 0;
+  let totalSupported = 0;
+  let totalApproximated = 0;
+  let totalUnsupported = 0;
   let totalTime = 0;
 
-  for (const result of results) {
-    totalProcessed += result.batchResult.totalFiles;
-    totalSuccessful += result.batchResult.successCount;
-    totalErrors += result.batchResult.errorCount;
+  for (const result of benchmarkResults) {
+    totalProcessed += result.summary.totalFiles;
+    totalSupported += result.summary.supportedFiles;
+    totalApproximated += result.summary.approximatedFiles;
+    totalUnsupported += result.summary.unsupportedFiles;
     totalTime += result.totalTime;
   }
 
   console.log(`Total files processed: ${totalProcessed}`);
-  console.log(`Total successful: ${totalSuccessful}`);
-  console.log(`Total errors: ${totalErrors}`);
+  console.log(`Total supported: ${totalSupported}`);
+  console.log(`Total approximated: ${totalApproximated}`);
+  console.log(`Total unsupported: ${totalUnsupported}`);
   console.log(`Total time: ${totalTime.toFixed(2)}ms`);
   if (totalProcessed > 0) {
     console.log(`Average per file: ${(totalTime / totalProcessed).toFixed(2)}ms`);

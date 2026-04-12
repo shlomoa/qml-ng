@@ -20,7 +20,7 @@ The converter tracks timing and memory usage across all pipeline stages:
 #### Single File with Performance Tracking
 
 ```bash
-node dist/cli.js examples/login.qml --perf
+node dist/cli.js examples/login.qml --name login-form --perf
 ```
 
 This outputs:
@@ -31,24 +31,25 @@ This outputs:
 #### Performance Metrics Format
 
 ```
+----- PERFORMANCE METRICS -----
 === Performance Metrics ===
 Files processed: 1
-Total duration: 2.58ms
-Peak memory: 4.42MB
+Total duration: 13.32ms
+Peak memory: 5.11MB
 
 Stage breakdown:
   read:
     Duration: 0.10ms
     Memory delta: +0.00MB
   parse:
-    Duration: 1.12ms
-    Memory delta: +0.06MB
+    Duration: 1.89ms
+    Memory delta: +0.73MB
   schema-conversion:
-    Duration: 0.74ms
-    Memory delta: -0.61MB
+    Duration: 9.89ms
+    Memory delta: +0.12MB
   render:
-    Duration: 0.62ms
-    Memory delta: +0.03MB
+    Duration: 1.44ms
+    Memory delta: +0.07MB
 ```
 
 ### Batch Conversion
@@ -56,7 +57,7 @@ Stage breakdown:
 Process multiple QML files in a directory:
 
 ```bash
-node dist/cli.js --batch examples/FigmaVariants --perf --max-files 10
+node dist/cli.js examples/FigmaVariants --batch --perf --dry-run
 ```
 
 Features:
@@ -69,22 +70,38 @@ Features:
 #### Batch Output Example
 
 ```
-Found 10 QML file(s) in examples/FigmaVariants
+SUPPORTED login.qml (2 infos)
+Would write login-form/login-form.component.ts
+Would write login-form/login-form.component.html
+Would write login-form/login-form.component.scss
+...
 
-Processing 10/10: ItemLayer.qml
-
-=== Batch Conversion Results ===
-Total files: 10
-Successful: 10
-Errors: 0
+Summary:
+  Files: 298 total (32 supported, 90 approximated, 176 unsupported)
+  Diagnostics: 116 errors, 2232 warnings, 2634 infos
+  Strict-mode failures: 176
 
 === Performance Metrics ===
-Files processed: 10
-Total duration: 6.87ms
-Peak memory: 6.25MB
-...
+Files processed: 298
+Total duration: 1600.30ms
+Peak memory: 17.73MB
+
+Stage breakdown:
+  read:
+    Duration: 9.19ms
+    Memory delta: +1.30MB
+  parse:
+    Duration: 1523.60ms
+    Memory delta: -3.61MB
+  schema-conversion:
+    Duration: 48.19ms
+    Memory delta: +14.93MB
+  render:
+    Duration: 19.31ms
+    Memory delta: +6.10MB
+
 Averages per file:
-  Duration: 0.69ms
+  Duration: 5.37ms
 ```
 
 ## Benchmarking
@@ -144,24 +161,31 @@ The converter is designed for production-scale workloads:
 ### Programmatic Batch Conversion
 
 ```typescript
-import { convertQmlBatch, findQmlFiles } from 'qml-ng/lib/converter/batch-converter';
+import { convertQmlFile, convertDirectory, summarizeBatch } from 'qml-ng/lib/batch/batch-converter';
+import { PerformanceTracker } from 'qml-ng/lib/perf/performance-tracker';
 
-// Find all QML files
-const qmlFiles = findQmlFiles('path/to/qml/directory', {
-  maxDepth: 5,
-  exclude: [/node_modules/, /\.git/]
+// Convert a single file with performance tracking
+const result = convertQmlFile('path/to/file.qml', {
+  componentName: 'MyComponent',
+  rootDir: 'path/to/project',
+  trackPerformance: true
 });
 
-// Convert with performance tracking
-const result = await convertQmlBatch(qmlFiles, {
-  trackPerformance: true,
-  continueOnError: true,
-  onProgress: (current, total, file) => {
-    console.log(`Processing ${current}/${total}: ${file}`);
-  }
+if (result.performanceMetrics) {
+  console.log(PerformanceTracker.formatReport(result.performanceMetrics));
+}
+
+// Convert a directory
+const results = convertDirectory('path/to/qml/directory', {
+  recursive: true,
+  trackPerformance: true
 });
 
-console.log(`Processed ${result.successCount}/${result.totalFiles} files`);
+// Summarize batch results
+const summary = summarizeBatch(results);
+if (summary.performanceMetrics) {
+  console.log(PerformanceTracker.formatReport(summary.performanceMetrics));
+}
 ```
 
 ### Performance Tracker API

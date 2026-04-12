@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import { collectQmlFiles, convertQmlFile, convertDirectory, FileConversionResult, formatBatchSummary, summarizeBatch } from './lib/batch/batch-converter';
 import { countDiagnosticsBySeverity, formatDiagnosticCounts, formatDiagnostics } from './lib/diagnostics/formatter';
 import { dasherize } from './lib/naming';
+import { PerformanceTracker } from './lib/perf/performance-tracker';
 
 interface CliOptions {
   inputPath: string;
@@ -14,6 +15,7 @@ interface CliOptions {
   batch: boolean;
   recursive: boolean;
   verbose: boolean;
+  perf: boolean;
 }
 
 const MAX_DIFF_MATRIX_CELLS = 250_000;
@@ -31,7 +33,8 @@ function printUsage(): void {
       '  --strict                 Exit with code 1 when unsupported features are detected',
       '  --batch                  Treat the input path as a directory bundle',
       '  --no-recursive           Do not recurse into subdirectories in batch mode',
-      '  --verbose                Print per-file diagnostics in batch mode'
+      '  --verbose                Print per-file diagnostics in batch mode',
+      '  --perf                   Show performance metrics for conversion pipeline'
     ].join('\n')
   );
 }
@@ -49,7 +52,8 @@ function parseArgs(argv: string[]): CliOptions | undefined {
     strict: false,
     batch: false,
     recursive: true,
-    verbose: false
+    verbose: false,
+    perf: false
   };
 
   for (let index = 0; index < rest.length; index += 1) {
@@ -78,6 +82,9 @@ function parseArgs(argv: string[]): CliOptions | undefined {
         break;
       case '--verbose':
         options.verbose = true;
+        break;
+      case '--perf':
+        options.perf = true;
         break;
       default:
         console.error(`Unknown option: ${arg}`);
@@ -206,6 +213,11 @@ function printSingleFileOutput(result: FileConversionResult): void {
   console.log(result.rendered.scss);
   console.log('----- DIAGNOSTICS -----');
   console.log(formatDiagnostics(result.diagnostics).join('\n') || 'None');
+
+  if (result.performanceMetrics) {
+    console.log('\n----- PERFORMANCE METRICS -----');
+    console.log(PerformanceTracker.formatReport(result.performanceMetrics));
+  }
 }
 
 function printBatchResult(result: FileConversionResult, verbose: boolean): void {
@@ -270,10 +282,10 @@ export function runCli(argv: string[]): number {
     if (isBatch) {
       const batchDir = stat.isDirectory() ? inputPath : path.dirname(inputPath);
       const results = stat.isDirectory()
-        ? convertDirectory(batchDir, options.recursive)
+        ? convertDirectory(batchDir, { recursive: options.recursive, trackPerformance: options.perf })
         : collectQmlFiles(batchDir, options.recursive)
           .filter(filePath => filePath === inputPath)
-          .map(filePath => convertQmlFile(filePath, { rootDir: batchDir }));
+          .map(filePath => convertQmlFile(filePath, { rootDir: batchDir, trackPerformance: options.perf }));
 
       for (const result of results) {
         printBatchResult(result, options.verbose);
@@ -290,14 +302,20 @@ export function runCli(argv: string[]): number {
         writeGeneratedFiles(result, options.outputDir);
       }
 
-      console.log(formatBatchSummary(summarizeBatch(results)));
+      const summary = summarizeBatch(results);
+      console.log(formatBatchSummary(summary));
+
+      if (options.perf && summary.performanceMetrics) {
+        console.log('\n' + PerformanceTracker.formatReport(summary.performanceMetrics));
+      }
+
       finalizeStrictMode(results, options.strict);
       return 0;
     }
 
     const inferredComponentName = path.basename(inputPath).replace(/(\.ui)?\.qml$/, '');
     const componentName = options.componentName ?? (inferredComponentName || dasherize(inputPath));
-    const result = convertQmlFile(inputPath, { componentName, rootDir: path.dirname(inputPath) });
+    const result = convertQmlFile(inputPath, { componentName, rootDir: path.dirname(inputPath), trackPerformance: options.perf });
 
     if (options.diff && options.outputDir) {
       printGeneratedFileDiffs(result, options.outputDir);

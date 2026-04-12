@@ -7,6 +7,7 @@ import { formatDiagnosticCounts, countDiagnosticsBySeverity, DiagnosticCounts, h
 import { componentClassName, dasherize } from '../naming';
 import { parseQmlWithDiagnostics } from '../qml/parser';
 import { UiDiagnostic, UiDocument } from '../schema/ui-schema';
+import { PerformanceTracker, ConversionMetrics } from '../perf/performance-tracker';
 
 export type ConversionStatus = 'supported' | 'approximated' | 'unsupported';
 
@@ -26,6 +27,7 @@ export interface FileConversionResult {
   generatedFiles: GeneratedFile[];
   status: ConversionStatus;
   strictViolation: boolean;
+  performanceMetrics?: ConversionMetrics;
 }
 
 export interface BatchSummary {
@@ -35,11 +37,13 @@ export interface BatchSummary {
   unsupportedFiles: number;
   diagnostics: DiagnosticCounts;
   strictViolations: number;
+  performanceMetrics?: ConversionMetrics;
 }
 
 export interface ConvertQmlFileOptions {
   componentName?: string;
   rootDir?: string;
+  trackPerformance?: boolean;
 }
 
 function compareDiagnostics(left: UiDiagnostic, right: UiDiagnostic): number {
@@ -129,15 +133,28 @@ export function collectQmlFiles(dir: string, recursive = true): string[] {
 }
 
 export function convertQmlFile(filePath: string, options: ConvertQmlFileOptions = {}): FileConversionResult {
+  const tracker = options.trackPerformance ? new PerformanceTracker() : undefined;
+
+  tracker?.startStage('read');
   const source = fs.readFileSync(filePath, 'utf8');
+  tracker?.endStage();
+
   const rootDir = options.rootDir ?? path.dirname(filePath);
   const componentName = options.componentName ?? componentNameFromFile(filePath);
+
+  tracker?.startStage('parse');
   const parseResult = parseQmlWithDiagnostics(source, {
     filePath,
     searchRoots: [path.dirname(filePath), rootDir]
   });
+  tracker?.endStage();
+
+  tracker?.startStage('schema-conversion');
   const document = qmlToUiDocument(componentName, parseResult.document, filePath);
   const diagnostics = [...parseResult.diagnostics, ...document.diagnostics].sort(compareDiagnostics);
+  tracker?.endStage();
+
+  tracker?.startStage('render');
   const rendered = renderAngularMaterial(
     {
       ...document,
@@ -145,6 +162,8 @@ export function convertQmlFile(filePath: string, options: ConvertQmlFileOptions 
     },
     componentClassName(componentName)
   );
+  tracker?.endStage();
+
   const relativeSourcePath = normalizeRelativePath(path.relative(rootDir, filePath));
 
   return {
@@ -160,13 +179,22 @@ export function convertQmlFile(filePath: string, options: ConvertQmlFileOptions 
     rendered,
     generatedFiles: createGeneratedFiles(relativeSourcePath, componentName, rendered),
     status: classifyConversion(diagnostics),
-    strictViolation: hasStrictModeViolations(diagnostics)
+    strictViolation: hasStrictModeViolations(diagnostics),
+    performanceMetrics: tracker ? tracker.generateReport(1) : undefined
   };
 }
 
-export function convertDirectory(dir: string, recursive = true): FileConversionResult[] {
+export interface ConvertDirectoryOptions {
+  recursive?: boolean;
+  trackPerformance?: boolean;
+}
+
+export function convertDirectory(dir: string, options: ConvertDirectoryOptions = {}): FileConversionResult[] {
+  const recursive = options.recursive ?? true;
+  const trackPerformance = options.trackPerformance ?? false;
+
   return collectQmlFiles(dir, recursive)
-    .map(filePath => convertQmlFile(filePath, { rootDir: dir }));
+    .map(filePath => convertQmlFile(filePath, { rootDir: dir, trackPerformance }));
 }
 
 export function summarizeBatch(results: FileConversionResult[]): BatchSummary {
@@ -181,13 +209,61 @@ export function summarizeBatch(results: FileConversionResult[]): BatchSummary {
     { error: 0, warning: 0, info: 0 }
   );
 
+  // Aggregate performance metrics if any results have them
+  let performanceMetrics: ConversionMetrics | undefined;
+  const resultsWithMetrics = results.filter(r => r.performanceMetrics);
+
+  if (resultsWithMetrics.length > 0) {
+    const aggregateTracker = new PerformanceTracker();
+    aggregateTracker.startStage('batch-total');
+
+    // Collect all stage metrics across files
+    const aggregatedStages = new Map<string, { totalDuration: number; totalMemoryDelta: number; count: number }>();
+
+    for (const result of resultsWithMetrics) {
+      if (result.performanceMetrics) {
+        for (const stage of result.performanceMetrics.stages) {
+          const existing = aggregatedStages.get(stage.name) ?? { totalDuration: 0, totalMemoryDelta: 0, count: 0 };
+          existing.totalDuration += stage.duration ?? 0;
+          existing.totalMemoryDelta += stage.memoryDelta ?? 0;
+          existing.count += 1;
+          aggregatedStages.set(stage.name, existing);
+        }
+      }
+    }
+
+    aggregateTracker.endStage();
+
+    // Create synthetic stages with averaged metrics
+    const syntheticStages = Array.from(aggregatedStages.entries()).map(([name, data]) => ({
+      name,
+      startTime: 0,
+      endTime: data.totalDuration,
+      duration: data.totalDuration,
+      memoryBefore: 0,
+      memoryAfter: data.totalMemoryDelta,
+      memoryDelta: data.totalMemoryDelta
+    }));
+
+    const totalDuration = Array.from(aggregatedStages.values()).reduce((sum, stage) => sum + stage.totalDuration, 0);
+    const peakMemory = Math.max(...resultsWithMetrics.map(r => r.performanceMetrics?.peakMemory ?? 0));
+
+    performanceMetrics = {
+      totalDuration,
+      stages: syntheticStages,
+      peakMemory,
+      fileCount: results.length
+    };
+  }
+
   return {
     totalFiles: results.length,
     supportedFiles: results.filter(result => result.status === 'supported').length,
     approximatedFiles: results.filter(result => result.status === 'approximated').length,
     unsupportedFiles: results.filter(result => result.status === 'unsupported').length,
     diagnostics,
-    strictViolations: results.filter(result => result.strictViolation).length
+    strictViolations: results.filter(result => result.strictViolation).length,
+    performanceMetrics
   };
 }
 
