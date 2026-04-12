@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/schema",
+  "$id": "UpdateRoutesSchema",
+  "title": "Generated Route Update Options",
+  "type": "object",
+  "properties": {
+    "path": {
+      "type": "string",
+      "description": "Legacy destination path override maintained for backward compatibility",
+      "deprecated": true
+    },
+    "project": {
+      "type": "string",
+      "description": "Angular workspace project to inspect"
+    },
+    "feature": {
+      "type": "string",
+      "description": "Feature folder under the target project's app root"
+    },
+    "routeMode": {
+      "type": "string",
+      "description": "Route file target to update from discovered generated components",
+      "enum": ["project", "feature"],
+      "default": "feature"
+    }
+  }
+}

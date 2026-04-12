@@ -13,7 +13,7 @@ A starter repository for converting a subset of [QML] into Angular standalone co
   - first layout resolver for `anchors.*`
 - Angular Material HTML / TS / SCSS renderer
 - automatic Material imports per generated component
-- Angular schematic collection with `qml-component`
+- Angular schematic collection with `qml-component`, `qml-feature`, `update-routes`, `migrate-generated`, and `validate-generated`
 - simple CLI for local experimentation
 
 ## Example corpus
@@ -86,6 +86,14 @@ node dist/cli.js examples/WebinarDemo --output-dir /tmp/qml-ng-out --strict
 ```
 
 For a single file, the CLI still prints generated component files to stdout by default. When you pass `--output-dir`, it writes deterministic `*.component.{ts,html,scss}` files under that directory. Directory inputs are treated as batch conversions and report per-file plus aggregate diagnostics, with `--dry-run`, `--diff`, and `--strict` all supported for larger bundles.
+
+For Angular workspace integration, the schematic collection now exposes:
+
+- `qml-component` for single-file generation
+- `qml-feature` for directory or `.qmlproject` bundle generation
+- `update-routes` to rebuild route declarations from generated components
+- `migrate-generated` to rewrite barrel and route files to the current conventions
+- `validate-generated` to verify generated component, barrel, and route consistency
 
 For day-to-day validation:
 
