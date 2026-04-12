@@ -42,7 +42,7 @@ function sanitizeAngularComputedExpression(expression: string): { expression: st
 
   return {
     expression: 'undefined',
-    comment: '/* TODO(qml-ng): Unsupported binding expression sanitized during Angular emission. */'
+    comment: '/* TODO(qml-ng): Unsupported binding expression contains characters outside the Angular expression allowlist (for example backticks, semicolons, or braces) and needs manual review. */'
   };
 }
 
@@ -157,8 +157,10 @@ function renderButton(node: UiNode, context: RenderContext): string {
   return `<button mat-raised-button${renderEvents(node, context)}>{{ ${textExpr} }}</button>`;
 }
 
-function renderAnimation(): string {
-  return '';
+function renderAnimation(node: UiNode): string {
+  return node.name
+    ? `<!-- qml-ng approximation: ignored ${node.name.replace(/--/g, '—').trim()} node. -->`
+    : '';
 }
 
 function renderUnknown(node: UiNode, _context: RenderContext, diagnosticsEmitter: DiagnosticsEmitter): string {
