@@ -1,5 +1,7 @@
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
+import { format } from 'node:util';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
@@ -64,16 +66,101 @@ function assertNotContains(text, snippet, label) {
   }
 }
 
+function runCli(cliRunner, args, expectedStatus = 0) {
+  const stdout = [];
+  const stderr = [];
+  const originalLog = console.log;
+  const originalError = console.error;
+  let status;
+
+  console.log = (...parts) => {
+    stdout.push(format(...parts));
+  };
+  console.error = (...parts) => {
+    stderr.push(format(...parts));
+  };
+
+  try {
+    status = cliRunner(args);
+  } finally {
+    console.log = originalLog;
+    console.error = originalError;
+  }
+
+  const result = {
+    status,
+    stdout: stdout.join('\n'),
+    stderr: stderr.join('\n')
+  };
+
+  if (result.status !== expectedStatus) {
+    throw new Error(
+      `Expected CLI exit code ${expectedStatus}, got ${result.status}\nSTDOUT:\n${result.stdout}\nSTDERR:\n${result.stderr}`
+    );
+  }
+
+  return result;
+}
+
+function formatDiagnostics(document) {
+  const text = (document.diagnostics ?? [])
+    .map(diagnostic => `${diagnostic.severity}:${diagnostic.code ?? 'NO_CODE'}:${diagnostic.message}`)
+    .join('\n');
+  return text || 'None';
+}
+
+function convertAndRenderCase(mods, testCase) {
+  const source = testCase.source ?? fs.readFileSync(testCase.filePath, 'utf8');
+  const searchRoot = testCase.filePath
+    ? [path.dirname(path.dirname(testCase.filePath))]
+    : undefined;
+
+  const document = mods.qmlToUiDocument(
+    testCase.componentName,
+    mods.parseQml(source, testCase.filePath ? {
+      filePath: testCase.filePath,
+      searchRoots: searchRoot
+    } : undefined)
+  );
+  const rendered = mods.renderAngularMaterial(document, testCase.className);
+  return { document, rendered };
+}
+
+function collectEvents(node, events = []) {
+  for (const event of node.events ?? []) {
+    events.push(event);
+  }
+
+  for (const child of node.children ?? []) {
+    collectEvents(child, events);
+  }
+
+  return events;
+}
+
 async function loadBuiltModules() {
   const parser = await import(pathToFileURL(path.join(repoRoot, 'dist', 'lib', 'qml', 'parser.js')).href);
   const resolver = await import(pathToFileURL(path.join(repoRoot, 'dist', 'lib', 'qml', 'qml-resolution.js')).href);
   const converter = await import(pathToFileURL(path.join(repoRoot, 'dist', 'lib', 'converter', 'qml-to-ui.js')).href);
   const renderer = await import(pathToFileURL(path.join(repoRoot, 'dist', 'lib', 'angular', 'material-renderer.js')).href);
+  const rendererContract = await import(pathToFileURL(path.join(repoRoot, 'dist', 'lib', 'angular', 'renderer-contract.js')).href);
+  const nodeRegistry = await import(pathToFileURL(path.join(repoRoot, 'dist', 'lib', 'angular', 'node-render-registry.js')).href);
+  const cli = await import(pathToFileURL(path.join(repoRoot, 'dist', 'cli.js')).href);
+  const cliRunner = cli.runCli ?? cli.default?.runCli;
+
+  if (typeof cliRunner !== 'function') {
+    throw new Error('Could not load runCli() from dist/cli.js');
+  }
+
   return {
     parseQml: parser.parseQml,
     collectResolvedQmlDependencies: resolver.collectResolvedQmlDependencies,
     qmlToUiDocument: converter.qmlToUiDocument,
-    renderAngularMaterial: renderer.renderAngularMaterial
+    renderAngularMaterial: renderer.renderAngularMaterial,
+    AngularMaterialRenderer: renderer.AngularMaterialRenderer,
+    createRenderContext: rendererContract.createRenderContext,
+    getUiNodeRenderRule: nodeRegistry.getUiNodeRenderRule,
+    runCli: cliRunner
   };
 }
 
@@ -185,17 +272,104 @@ function validateLayoutSamples(mods) {
   }
 }
 
-function validateRenderedFile(mods, testCase) {
-  const source = fs.readFileSync(testCase.filePath, 'utf8');
+function validateRendererContract(mods) {
   const document = mods.qmlToUiDocument(
-    testCase.componentName,
-    mods.parseQml(source, {
-      filePath: testCase.filePath,
-      searchRoots: [path.dirname(path.dirname(testCase.filePath))]
-    })
+    'renderer-contract-sample',
+    mods.parseQml(
+      `Window {
+  property int currentIndex: 0
+
+  Column {
+    Image { source: "assets/logo.png" }
+    TextField { placeholderText: "Search" }
+
+    Button {
+      text: "Open"
+      onClicked: currentIndex = 1
+    }
+  }
+}`
+    )
   );
-  const rendered = mods.renderAngularMaterial(document, testCase.className);
-  assertContains(rendered.html, `<div class="`, `${testCase.label} HTML`);
+  const renderer = new mods.AngularMaterialRenderer();
+  const stateDeclarations = renderer.typescript.collectStateDeclarations(document.root);
+  const context = mods.createRenderContext(new Set(stateDeclarations.map(declaration => declaration.name)));
+  const html = renderer.html.render(document.root, context);
+  const ts = renderer.typescript.render(document, 'RendererContractSampleComponent', context, stateDeclarations);
+  const scss = renderer.scss.render(document.root);
+
+  assertContains(html, 'class="qml-window"', 'renderer contract HTML');
+  assertContains(html, 'class="qml-image"', 'renderer contract HTML');
+  assertContains(html, `[src]='"assets/logo.png"'`, 'renderer contract HTML');
+  assertContains(html, '(click)="handleClickL10C7()"', 'renderer contract HTML');
+  assertContains(html, '<mat-form-field appearance="outline">', 'renderer contract HTML');
+  assertContains(ts, 'standalone: true,', 'renderer contract TypeScript');
+  assertContains(ts, 'imports: [MatButtonModule, MatFormFieldModule, MatInputModule],', 'renderer contract TypeScript');
+  assertContains(ts, 'readonly currentIndex = signal<number>(0);', 'renderer contract TypeScript');
+  assertContains(ts, 'handleClickL10C7(): void {', 'renderer contract TypeScript');
+  assertContains(scss, '.qml-window {', 'renderer contract SCSS');
+}
+
+function validateNodeRenderRegistry(mods) {
+  const makeNode = (kind, name, extra = {}) => ({
+    kind,
+    name,
+    events: [],
+    children: [],
+    ...extra
+  });
+
+  const buttonRule = mods.getUiNodeRenderRule(makeNode('button', 'Button'));
+  if (buttonRule.mappingCategory !== 'supported') {
+    throw new Error(`Expected button mapping to be supported, got ${buttonRule.mappingCategory}`);
+  }
+  if (buttonRule.rendererKind !== 'material') {
+    throw new Error(`Expected button mapping to use the material renderer, got ${buttonRule.rendererKind}`);
+  }
+  if (!buttonRule.materialImports.includes('MatButtonModule')) {
+    throw new Error('Expected button mapping to require MatButtonModule');
+  }
+
+  const inputRule = mods.getUiNodeRenderRule(makeNode('input', 'TextField'));
+  if (inputRule.mappingCategory !== 'approximated') {
+    throw new Error(`Expected input mapping to be approximated, got ${inputRule.mappingCategory}`);
+  }
+  if (!inputRule.materialImports.includes('MatFormFieldModule') || !inputRule.materialImports.includes('MatInputModule')) {
+    throw new Error('Expected input mapping to require MatFormFieldModule and MatInputModule');
+  }
+
+  const containerRule = mods.getUiNodeRenderRule(makeNode('container', 'Column', { meta: { orientation: 'column' } }));
+  if (containerRule.mappingCategory !== 'approximated') {
+    throw new Error(`Expected container mapping to be approximated, got ${containerRule.mappingCategory}`);
+  }
+  if (containerRule.rendererKind !== 'angular') {
+    throw new Error(`Expected container mapping to use the angular renderer, got ${containerRule.rendererKind}`);
+  }
+
+  const unknownRule = mods.getUiNodeRenderRule(makeNode('unknown', 'CheckBox'));
+  if (unknownRule.mappingCategory !== 'unsupported') {
+    throw new Error(`Expected unknown mapping to be unsupported, got ${unknownRule.mappingCategory}`);
+  }
+  if (unknownRule.rendererKind !== 'placeholder') {
+    throw new Error(`Expected unknown mapping to render a placeholder, got ${unknownRule.rendererKind}`);
+  }
+
+  const animationRule = mods.getUiNodeRenderRule(makeNode('animation', 'KeyframeGroup'));
+  if (animationRule.mappingCategory !== 'unsupported') {
+    throw new Error(`Expected animation mapping to be unsupported, got ${animationRule.mappingCategory}`);
+  }
+  if (animationRule.rendererKind !== 'none') {
+    throw new Error(`Expected animation mapping to skip markup, got ${animationRule.rendererKind}`);
+  }
+}
+
+function validateRenderedCase(mods, testCase) {
+  const { document, rendered } = convertAndRenderCase(mods, testCase);
+  const renderedDiagnostics = formatDiagnostics(document);
+
+  if (testCase.expectContainer ?? true) {
+    assertContains(rendered.html, `<div class="`, `${testCase.label} HTML`);
+  }
 
   for (const snippet of testCase.htmlContains ?? []) {
     assertContains(rendered.html, snippet, `${testCase.label} HTML`);
@@ -205,13 +379,69 @@ function validateRenderedFile(mods, testCase) {
     assertNotContains(rendered.html, snippet, `${testCase.label} HTML`);
   }
 
+  for (const snippet of testCase.tsContains ?? []) {
+    assertContains(rendered.ts, snippet, `${testCase.label} TypeScript`);
+  }
+
+  for (const snippet of testCase.tsNotContains ?? []) {
+    assertNotContains(rendered.ts, snippet, `${testCase.label} TypeScript`);
+  }
+
   for (const snippet of testCase.diagnosticsContains ?? []) {
-    assertContains(document.diagnostics.join('\n') || 'None', snippet, `${testCase.label} diagnostics`);
+    assertContains(renderedDiagnostics, snippet, `${testCase.label} diagnostics`);
   }
 
   for (const snippet of testCase.diagnosticsNotContains ?? []) {
-    assertNotContains(document.diagnostics.join('\n') || 'None', snippet, `${testCase.label} diagnostics`);
+    assertNotContains(renderedDiagnostics, snippet, `${testCase.label} diagnostics`);
   }
+}
+
+function validateEventModelCase(mods, testCase) {
+  const { document } = convertAndRenderCase(mods, testCase);
+  const events = collectEvents(document.root);
+
+  for (const expectedEvent of testCase.expectedEvents ?? []) {
+    const match = events.find(event => event.handler === expectedEvent.handler);
+    if (!match) {
+      throw new Error(`Expected ${testCase.label} to include handler:\n${expectedEvent.handler}`);
+    }
+
+    if (expectedEvent.behavior && match.behavior !== expectedEvent.behavior) {
+      throw new Error(
+        `Expected handler '${expectedEvent.handler}' in ${testCase.label} to have behavior '${expectedEvent.behavior}', got '${match.behavior ?? 'undefined'}'`
+      );
+    }
+  }
+}
+
+function validateCliModes(mods) {
+  const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), 'qml-ng-cli-fixture-'));
+  const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'qml-ng-cli-output-'));
+
+  fs.writeFileSync(
+    path.join(fixtureDir, 'Supported.qml'),
+    'Item {\n  Text {\n    text: "Hello"\n  }\n}\n'
+  );
+  fs.writeFileSync(
+    path.join(fixtureDir, 'Unsupported.qml'),
+    'Item {\n  Timeline {}\n}\n'
+  );
+
+  const dryRun = runCli(mods.runCli, [fixtureDir, '--dry-run', '--verbose']);
+  assertContains(dryRun.stdout, 'SUPPORTED Supported.qml', 'CLI batch dry-run');
+  assertContains(dryRun.stdout, 'UNSUPPORTED Unsupported.qml', 'CLI batch dry-run');
+  assertContains(
+    dryRun.stdout,
+    `${path.join(fixtureDir, 'Unsupported.qml')}:2:12 WARNING`,
+    'CLI verbose diagnostics'
+  );
+  assertContains(dryRun.stdout, 'Summary:', 'CLI batch summary');
+
+  const diff = runCli(mods.runCli, [fixtureDir, '--output-dir', outputDir, '--diff']);
+  assertContains(diff.stdout, `+++ ${path.join(outputDir, 'supported', 'supported.component.ts')}`, 'CLI diff mode');
+
+  const strict = runCli(mods.runCli, [fixtureDir, '--dry-run', '--strict'], 1);
+  assertContains(strict.stderr, 'Strict mode failed', 'CLI strict mode');
 }
 
 const mods = await loadBuiltModules();
@@ -229,6 +459,27 @@ const projects = [
 
 const renderedCases = [
   {
+    label: 'figma app shell renders window',
+    filePath: path.join(repoRoot, 'examples', 'FigmaVariants', 'FigmaVariantsContent', 'App.qml'),
+    componentName: 'figma-variants-app',
+    className: 'FigmaVariantsAppComponent',
+    htmlContains: ['class="qml-window"'],
+    htmlNotContains: ['Unsupported node: Window'],
+    diagnosticsNotContains: ['Unsupported QML type: Window']
+  },
+  {
+    label: 'figma icons preview preserves asset images and surfaces unsupported graphics',
+    filePath: path.join(repoRoot, 'examples', 'FigmaVariants', 'FigmaVariantsContent', 'IconsPreview.ui.qml'),
+    componentName: 'figma-icons-preview',
+    className: 'FigmaIconsPreviewComponent',
+    htmlContains: [
+      'class="qml-image"',
+      `[src]='"assets/variantFrame_Icons_merged_child.png"'`,
+      'Unsupported node: SvgPathItem'
+    ],
+    diagnosticsContains: ['Unsupported QML type: SvgPathItem']
+  },
+  {
     label: 'webinar app shell renders window',
     filePath: path.join(repoRoot, 'examples', 'WebinarDemo', 'WebinarDemoContent', 'App.qml'),
     componentName: 'webinar-demo-app',
@@ -244,7 +495,41 @@ const renderedCases = [
     className: 'WebinarMainAppComponent',
     htmlContains: ['class="qml-stack-layout"', 'class="qml-image"'],
     htmlNotContains: ['Unsupported node: StackLayout', 'Unsupported node: Image'],
+    diagnosticsContains: ['QTQUICK_LAYOUTS_APPROXIMATE'],
     diagnosticsNotContains: ['Unsupported QML type: StackLayout', 'Unsupported QML type: Image']
+  },
+  {
+    label: 'login sample emits centered layout intent and CSS positioning',
+    filePath: path.join(repoRoot, 'examples', 'login.qml'),
+    componentName: 'login-sample',
+    className: 'LoginSampleComponent',
+    htmlContains: ['class="qml-column"'],
+    diagnosticsContains: ['anchors.centerIn']
+  },
+  {
+    label: 'figma panel fixture preserves fixed composition geometry',
+    filePath: path.join(repoRoot, 'examples', 'FigmaVariants', 'FigmaVariantsContent', 'PanelLabel.ui.qml'),
+    componentName: 'figma-panel-label',
+    className: 'FigmaPanelLabelComponent',
+    htmlContains: [
+      '<span style="position: absolute; left: 49px; top: 10px; width: 215px; height: 12px;"'
+    ],
+    diagnosticsContains: ['x: Mapped to CSS left', 'y: Mapped to CSS top']
+  },
+  {
+    label: 'webinar stack layout fixture diagnoses flow conflicts',
+    filePath: path.join(repoRoot, 'examples', 'WebinarDemo', 'WebinarDemoContent', 'Stacklayoutframe.ui.qml'),
+    componentName: 'webinar-stacklayout-frame',
+    className: 'WebinarStacklayoutFrameComponent',
+    htmlContains: ['class="qml-stack-layout"'],
+    diagnosticsContains: ['QTQUICK_LAYOUTS_APPROXIMATE', 'LAYOUT_CONTAINER_CONFLICT']
+  },
+  {
+    label: 'webinar drawer fixture diagnoses QtQuick.Layouts sizing hints',
+    filePath: path.join(repoRoot, 'examples', 'WebinarDemo', 'WebinarDemoContent', 'Leftdrawer.ui.qml'),
+    componentName: 'webinar-leftdrawer',
+    className: 'WebinarLeftdrawerComponent',
+    diagnosticsContains: ['QTQUICK_LAYOUTS_APPROXIMATE', 'Layout.preferredWidth', 'Layout.preferredHeight']
   },
   {
     label: 'webinar popup keyframes are ignored',
@@ -252,6 +537,52 @@ const renderedCases = [
     componentName: 'webinar-smallpopup',
     className: 'WebinarSmallpopupComponent',
     diagnosticsNotContains: ['Unsupported QML type: KeyframeGroup']
+  },
+  {
+    label: 'inline call handlers stay as safe template expressions',
+    source: `Item {\n  Button {\n    text: "Submit"\n    onClicked: submit()\n  }\n}`,
+    componentName: 'inline-handler-sample',
+    className: 'InlineHandlerSampleComponent',
+    htmlContains: ['(click)="submit()"'],
+    tsNotContains: ['handleClick1(): void'],
+    diagnosticsNotContains: ['UNSUPPORTED_HANDLER']
+  },
+  {
+    label: 'signal assignment handlers generate component methods',
+    source: `Item {\n  property int currentIndex: 0\n  Button {\n    text: "Go"\n    onClicked: currentIndex = 1\n  }\n}`,
+    componentName: 'assignment-handler-sample',
+    className: 'AssignmentHandlerSampleComponent',
+    htmlContains: ['(click)="handleClickL5C5()"'],
+    htmlNotContains: ['currentIndex = 1'],
+    tsContains: [
+      'readonly currentIndex = signal<number>(0);',
+      'handleClickL5C5(): void {',
+      'this.currentIndex.set(1);'
+    ],
+    diagnosticsContains: ['HANDLER_METHOD_STUB']
+  }
+];
+
+const eventModelCases = [
+  {
+    label: 'large example assignment handlers are modeled as generated methods',
+    filePath: path.join(repoRoot, 'examples', 'WebinarDemo', 'WebinarDemoContent', 'MainPanel.ui.qml'),
+    componentName: 'webinar-main-panel',
+    className: 'WebinarMainPanelComponent',
+    expectedEvents: [
+      { handler: 'stacklayoutframe.stacklayoutindex=0', behavior: 'method' },
+      { handler: 'stacklayoutframe.stacklayoutindex=1', behavior: 'method' },
+      { handler: 'stacklayoutframe.stacklayoutindex=2', behavior: 'method' }
+    ]
+  },
+  {
+    label: 'state-toggle handlers from large examples are modeled as generated methods',
+    filePath: path.join(repoRoot, 'examples', 'WebinarDemo', 'WebinarDemoContent', 'Burgermenu.ui.qml'),
+    componentName: 'webinar-burgermenu',
+    className: 'WebinarBurgermenuComponent',
+    expectedEvents: [
+      { handler: 'control.state="normal"', behavior: 'method' }
+    ]
   }
 ];
 
@@ -273,11 +604,24 @@ for (const result of results) {
 
 for (const testCase of renderedCases) {
   console.log(`Rendering ${testCase.label}...`);
-  validateRenderedFile(mods, testCase);
+  validateRenderedCase(mods, testCase);
 }
 
 console.log('Rendering layout samples...');
 validateLayoutSamples(mods);
+
+console.log('Validating renderer contract...');
+validateRendererContract(mods);
+console.log('Validating node render registry...');
+validateNodeRenderRegistry(mods);
+
+for (const testCase of eventModelCases) {
+  console.log(`Modeling ${testCase.label}...`);
+  validateEventModelCase(mods, testCase);
+}
+
+console.log('Validating CLI developer-experience modes...');
+validateCliModes(mods);
 
 if (failures.length) {
   const message = failures

@@ -1,30 +1,32 @@
 import { UiBinding } from '../schema/ui-schema';
+import { ExpressionParser } from '../qml/expression-parser';
+import {
+  extractDependencies,
+  generateAngularExpression,
+  isSimpleLiteral,
+  getLiteralValue
+} from '../qml/expression-analysis';
 
 export interface LoweredExpression {
   binding: UiBinding;
   angularExpression: string;
 }
 
-function extractDependencies(expression: string): string[] {
-  const matches = expression.match(/[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*/g) ?? [];
-  const blacklist = new Set(['true', 'false', 'null', 'undefined', 'parent']);
-  const roots = matches
-    .map(m => m.split('.')[0])
-    .filter(m => !blacklist.has(m));
-  return [...new Set(roots)];
-}
-
-function rewriteForSignals(expression: string, dependencies: string[]): string {
-  let rewritten = expression;
-  for (const dep of dependencies) {
-    const exact = new RegExp(`\\b${dep}\\b`, 'g');
-    rewritten = rewritten.replace(exact, `${dep}()`);
-  }
-  rewritten = rewritten.replace(/\?\.()/g, '?.');
-  return rewritten;
-}
-
+/**
+ * Lower a QML binding value to Angular
+ *
+ * This function now uses a proper expression AST instead of regex-based parsing.
+ * It supports:
+ * - Literals (strings, numbers, booleans)
+ * - Identifiers and member access (user.name)
+ * - Function calls (Math.max(a, b))
+ * - Binary operators (+, -, *, /, &&, ||, etc.)
+ * - Unary operators (!, -, +)
+ * - Conditional expressions (a ? b : c)
+ * - Optional chaining (user?.name)
+ */
 export function lowerBinding(raw: string | number | boolean): LoweredExpression {
+  // Handle non-string values as literals
   if (typeof raw !== 'string') {
     return {
       binding: { kind: 'literal', value: raw, dependencies: [] },
@@ -33,6 +35,8 @@ export function lowerBinding(raw: string | number | boolean): LoweredExpression 
   }
 
   const trimmed = raw.trim();
+
+  // Handle quoted string literals
   const quoted =
     (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
     (trimmed.startsWith("'") && trimmed.endsWith("'"));
@@ -45,21 +49,47 @@ export function lowerBinding(raw: string | number | boolean): LoweredExpression 
     };
   }
 
-  const isSimpleLiteral = /^[A-Za-z0-9 _-]+$/.test(trimmed) && !/[.()+\-/*]/.test(trimmed);
-  if (isSimpleLiteral) {
+  // Parse as expression using the full AST parser.
+  // This correctly distinguishes bare identifiers (signal reads like `label`)
+  // from literal values, and handles all operators and function calls.
+  const parser = new ExpressionParser();
+  const result = parser.parse(trimmed);
+
+  if (!result.ast || result.errors.length > 0) {
+    // If parsing failed, fall back to treating it as a literal or expression string
+    // This preserves backward compatibility
     return {
-      binding: { kind: 'literal', value: trimmed, dependencies: [] },
-      angularExpression: JSON.stringify(trimmed)
+      binding: {
+        kind: 'expression',
+        expression: trimmed,
+        dependencies: []
+      },
+      angularExpression: trimmed
     };
   }
 
-  const dependencies = extractDependencies(trimmed);
+  // Check if the parsed result is a simple literal
+  if (isSimpleLiteral(result.ast)) {
+    const value = getLiteralValue(result.ast);
+    return {
+      binding: { kind: 'literal', value: value ?? trimmed, dependencies: [] },
+      angularExpression: typeof value === 'string' ? JSON.stringify(value) : String(value)
+    };
+  }
+
+  // Extract dependencies from the AST
+  const depInfo = extractDependencies(result.ast);
+  const dependencies = Array.from(depInfo.identifiers);
+
+  // Generate Angular expression with signal reads
+  const angularExpression = generateAngularExpression(result.ast, depInfo.identifiers);
+
   return {
     binding: {
       kind: 'expression',
       expression: trimmed,
       dependencies
     },
-    angularExpression: rewriteForSignals(trimmed, dependencies)
+    angularExpression
   };
 }

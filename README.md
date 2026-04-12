@@ -6,16 +6,14 @@ A starter repository for converting a subset of [QML] into Angular standalone co
 
 - QML tokenizer and recursive parser
 - QML AST model
-- Canonical UI schema with versioning support
+- Canonical UI schema
 - Phase 3 semantic lowering:
   - expression lowering to Angular `computed(...)`
   - handler support like `onClicked:`
   - first layout resolver for `anchors.*`
 - Angular Material HTML / TS / SCSS renderer
 - automatic Material imports per generated component
-- Angular schematic collection with `qml-component`
-- Migration schematic for upgrading generated components
-- Versioning and deprecation tracking
+- Angular schematic collection with `qml-component`, `qml-feature`, `update-routes`, `migrate-generated`, and `validate-generated`
 - simple CLI for local experimentation
 
 ## Example corpus
@@ -82,14 +80,27 @@ The new example corpus shows the next wave of features the project will need to 
 
 ```bash
 node dist/cli.js examples/login.qml --name login-card
+node dist/cli.js examples/WebinarDemo --output-dir /tmp/qml-ng-out --dry-run --verbose
+node dist/cli.js examples/WebinarDemo --output-dir /tmp/qml-ng-out --diff
+node dist/cli.js examples/WebinarDemo --output-dir /tmp/qml-ng-out --strict
 ```
 
-This prints generated component files to stdout for the small supported subset. The larger example folders are better treated as regression fixtures and roadmap inputs than as current smoke tests.
+For a single file, the CLI still prints generated component files to stdout by default. When you pass `--output-dir`, it writes deterministic `*.component.{ts,html,scss}` files under that directory. Directory inputs are treated as batch conversions and report per-file plus aggregate diagnostics, with `--dry-run`, `--diff`, and `--strict` all supported for larger bundles.
+
+For Angular workspace integration, the schematic collection now exposes:
+
+- `qml-component` for single-file generation
+- `qml-feature` for directory or `.qmlproject` bundle generation
+- `update-routes` to rebuild route declarations from generated components
+- `migrate-generated` to rewrite barrel and route files to the current conventions
+- `validate-generated` to verify generated component, barrel, and route consistency
 
 For day-to-day validation:
 
 - use `examples/login.qml` for a fast smoke test
 - use curated files from `examples/FigmaVariants` and `examples/WebinarDemo` for regression, diagnostics, and feature-planning work
+- run `npm test` for tokenizer, parser, semantic lowering, renderer snapshot/golden, schematic integration, and generated-component compile checks
+- run `UPDATE_SNAPSHOTS=1 npm test` only when an intentional generator change requires refreshing committed snapshots under `test/__snapshots__`
 
 ## Main architecture
 
@@ -98,37 +109,13 @@ QML
 → tokenizer
 → recursive parser
 → QML AST
-→ canonical UI schema (versioned)
+→ canonical UI schema
 → semantic lowering
    - bindings
    - handlers
    - layout
 → Angular Material renderer
-→ schematic output (with version metadata)
+→ schematic output
 ```
-
-## Versioning and Migration
-
-qml-ng includes a comprehensive versioning strategy to support stable evolution:
-
-- **Generator version**: Follows semantic versioning (current: `0.3.0`)
-- **Schema version**: Tracks internal schema changes (current: `1.0`)
-- **Version metadata**: All generated components include version tracking
-- **Migration schematic**: Automated tool for updating existing components
-
-### Migrating Components
-
-To update an existing generated component to the current schema version:
-
-```bash
-ng generate qml-ng:migrate-qml-component \
-  --componentPath=src/app/login \
-  --qmlFile=examples/login.qml
-```
-
-### Documentation
-
-- [VERSIONING.md](./VERSIONING.md) - Complete versioning and migration strategy
-- [COMPATIBILITY.md](./COMPATIBILITY.md) - Output compatibility guarantees
 
 [QML]: https://doc.qt.io/qt-6/qmlreference.html
