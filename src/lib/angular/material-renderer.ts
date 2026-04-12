@@ -1,241 +1,59 @@
-import { lowerBinding } from '../converter/expression-lowering';
-import { layoutToScss } from '../converter/layout-resolver';
-import { UiBinding, UiDocument, UiNode } from '../schema/ui-schema';
-import { collectMaterialImports } from './material-imports';
+import { UiDocument } from '../schema/ui-schema';
+import { AngularDiagnosticsEmitter } from './diagnostics-emitter';
+import { AngularHtmlRenderer } from './html-renderer';
+import { MaterialImportsResolver } from './imports-resolver';
+import { AngularNamingService } from './naming-service';
+import {
+  AngularRendererContract,
+  createRenderContext,
+  DiagnosticsEmitter,
+  HtmlRenderer,
+  ImportsResolver,
+  NamingService,
+  RenderedAngularComponent,
+  ScssRenderer,
+  TypeScriptRenderer
+} from './renderer-contract';
+import { AngularScssRenderer } from './scss-renderer';
+import { AngularTypeScriptRenderer } from './typescript-renderer';
 
-export interface RenderedAngularComponent {
-  ts: string;
-  html: string;
-  scss: string;
-}
+export class AngularMaterialRenderer implements AngularRendererContract {
+  readonly html: HtmlRenderer;
+  readonly scss: ScssRenderer;
+  readonly imports: ImportsResolver;
+  readonly naming: NamingService;
+  readonly diagnostics: DiagnosticsEmitter;
+  readonly typescript: TypeScriptRenderer;
 
-interface RenderContext {
-  computedDeclarations: string[];
-  signalDeclarations: string[];
-  dependencyNames: Set<string>;
-  exprCounter: number;
-}
-
-function bindingLiteralOrExpr(binding: UiBinding | undefined, fieldPrefix: string, ctx: RenderContext): string {
-  if (!binding) return "''";
-
-  if (binding.kind === 'literal') {
-    return JSON.stringify(binding.value ?? '');
+  constructor(
+    importsResolver: ImportsResolver = new MaterialImportsResolver(),
+    namingService: NamingService = new AngularNamingService(),
+    diagnosticsEmitter: DiagnosticsEmitter = new AngularDiagnosticsEmitter(),
+    htmlRenderer?: HtmlRenderer,
+    scssRenderer: ScssRenderer = new AngularScssRenderer(),
+    typescriptRenderer?: TypeScriptRenderer
+  ) {
+    this.imports = importsResolver;
+    this.naming = namingService;
+    this.diagnostics = diagnosticsEmitter;
+    this.html = htmlRenderer ?? new AngularHtmlRenderer(this.diagnostics);
+    this.scss = scssRenderer;
+    this.typescript = typescriptRenderer ?? new AngularTypeScriptRenderer(this.imports, this.naming, this.diagnostics);
   }
 
-  binding.dependencies.forEach(d => ctx.dependencyNames.add(d));
-  const lowered = lowerBinding(binding.expression ?? '');
-  const fieldName = `${fieldPrefix}Expr${++ctx.exprCounter}`;
-  ctx.computedDeclarations.push(`readonly ${fieldName} = computed(() => ${lowered.angularExpression});`);
-  return `${fieldName}()`;
-}
+  render(doc: UiDocument, className: string): RenderedAngularComponent {
+    const stateDeclarations = this.typescript.collectStateDeclarations(doc.root);
+    const context = createRenderContext(new Set(stateDeclarations.map(declaration => declaration.name)));
+    const html = this.html.render(doc.root, context);
+    const ts = this.typescript.render(doc, className, context, stateDeclarations);
+    const scss = this.scss.render(doc.root);
 
-function renderEvents(node: UiNode): string {
-  if (!node.events.length) return '';
-  return ' ' + node.events.map(e => `(${e.angularEvent})="${e.handler}"`).join(' ');
-}
-
-function renderBoundAttribute(name: string, expression: string): string {
-  const escapedExpression = expression
-    .replace(/&/g, '&amp;')
-    .replace(/'/g, '&#39;');
-  return `[${name}]='${escapedExpression}'`;
-}
-
-function containerClassName(node: UiNode): string {
-  if (node.meta?.role === 'window') return 'qml-window';
-  if (node.meta?.role === 'structural') return 'qml-structural';
-  if (node.meta?.role === 'group') return 'qml-group';
-  if (node.meta?.role === 'scroll-view') return 'qml-scroll-view';
-  if (node.meta?.role === 'shape-path') return 'qml-shape-path';
-  if (node.meta?.layoutKind === 'stack') return 'qml-stack-layout';
-  if (node.meta?.layoutKind === 'grid') return 'qml-grid-layout';
-  if (node.meta?.layoutKind === 'flexbox') return 'qml-flexbox-layout';
-  if (node.meta?.layoutKind === 'row-layout') return 'qml-row-layout';
-  if (node.meta?.layoutKind === 'column-layout') return 'qml-column-layout';
-  if (node.meta?.orientation === 'row') return 'qml-row';
-  return 'qml-column';
-}
-
-function renderNode(node: UiNode, ctx: RenderContext): string {
-  switch (node.kind) {
-    case 'container': {
-      const className = containerClassName(node);
-      const content = node.children.map(child => renderNode(child, ctx)).filter(Boolean).join('\n');
-      return `<div class="${className}"${renderEvents(node)}>${content ? `\n${content}\n` : ''}</div>`;
-    }
-
-    case 'text': {
-      const textExpr = bindingLiteralOrExpr(node.text, 'text', ctx);
-      return `<span${renderEvents(node)}>{{ ${textExpr} }}</span>`;
-    }
-
-    case 'input': {
-      const placeholderExpr = bindingLiteralOrExpr(node.placeholder, 'placeholder', ctx);
-      return [
-        `<mat-form-field appearance="outline"${renderEvents(node)}>`,
-        `  <input matInput ${renderBoundAttribute('placeholder', placeholderExpr)}>`,
-        `</mat-form-field>`
-      ].join('\n');
-    }
-
-    case 'image': {
-      const sourceExpr = bindingLiteralOrExpr(node.source, 'imageSource', ctx);
-      return `<img class="qml-image"${renderEvents(node)} ${renderBoundAttribute('src', sourceExpr)}>`;
-    }
-
-    case 'button': {
-      const textExpr = bindingLiteralOrExpr(node.text, 'buttonText', ctx);
-      return `<button mat-raised-button${renderEvents(node)}>{{ ${textExpr} }}</button>`;
-    }
-
-    case 'animation':
-      return '';
-
-    case 'unknown':
-    default:
-      return `<div class="qml-unsupported">Unsupported node: ${node.name ?? 'unknown'}</div>`;
+    return { ts, html, scss };
   }
 }
 
-function collectLayoutScss(node: UiNode, level = 0): string[] {
-  const rules: string[] = [];
-  const selector = level === 0 ? ':host' : '';
-  const css = layoutToScss(node.layout);
-  if (selector && css) {
-    rules.push(`${selector} {\n${css}\n}`);
-  }
-  node.children.forEach(child => rules.push(...collectLayoutScss(child, level + 1)));
-  return rules;
-}
+const defaultRenderer = new AngularMaterialRenderer();
 
 export function renderAngularMaterial(doc: UiDocument, className: string): RenderedAngularComponent {
-  const ctx: RenderContext = {
-    computedDeclarations: [],
-    signalDeclarations: [],
-    dependencyNames: new Set<string>(),
-    exprCounter: 0
-  };
-
-  const html = renderNode(doc.root, ctx);
-  const materialImports = collectMaterialImports(doc.root);
-  const ngImports = [
-    'Component',
-    'computed',
-    ...(ctx.dependencyNames.size ? ['signal'] : [])
-  ];
-
-  for (const dep of [...ctx.dependencyNames].sort()) {
-    ctx.signalDeclarations.push(`readonly ${dep} = signal<any>(null);`);
-  }
-
-  const angularMaterialImportMap: Record<string, string> = {
-    MatButtonModule: '@angular/material/button',
-    MatFormFieldModule: '@angular/material/form-field',
-    MatInputModule: '@angular/material/input'
-  };
-
-  const groupedMaterialImports = materialImports
-    .map(name => `import { ${name} } from '${angularMaterialImportMap[name]}';`)
-    .join('\n');
-
-  const ts = [
-    `import { ${ngImports.join(', ')} } from '@angular/core';`,
-    groupedMaterialImports,
-    '',
-    '@Component({',
-    `  selector: 'app-${doc.name}',`,
-    '  standalone: true,',
-    `  imports: [${materialImports.join(', ')}],`,
-    `  templateUrl: './${doc.name}.component.html',`,
-    `  styleUrl: './${doc.name}.component.scss'`,
-    '})',
-    `export class ${className} {`,
-    ...ctx.signalDeclarations.map(s => `  ${s}`),
-    ...ctx.computedDeclarations.map(s => `  ${s}`),
-    '}',
-    ''
-  ].join('\n');
-
-  const scss = [
-    ':host {',
-    '  display: block;',
-    '}',
-    '',
-    '.qml-column {',
-      '  display: flex;',
-      '  flex-direction: column;',
-      '  gap: 16px;',
-    '}',
-    '',
-    '.qml-row {',
-      '  display: flex;',
-      '  flex-direction: row;',
-      '  gap: 16px;',
-    '}',
-    '',
-    '.qml-column-layout {',
-    '  display: flex;',
-    '  flex-direction: column;',
-    '  gap: 16px;',
-    '}',
-    '',
-    '.qml-row-layout {',
-    '  display: flex;',
-    '  flex-direction: row;',
-    '  gap: 16px;',
-    '}',
-    '',
-    '.qml-window {',
-    '  display: block;',
-    '}',
-    '',
-    '.qml-structural {',
-    '  display: contents;',
-    '}',
-    '',
-    '.qml-group {',
-      '  display: block;',
-    '}',
-    '',
-    '.qml-scroll-view {',
-    '  display: block;',
-    '  overflow: auto;',
-    '  max-width: 100%;',
-    '  max-height: 100%;',
-    '}',
-    '',
-    '.qml-shape-path {',
-    '  display: contents;',
-    '}',
-    '',
-    '.qml-stack-layout {',
-      '  display: block;',
-    '}',
-    '',
-    '.qml-grid-layout {',
-    '  display: grid;',
-    '  gap: 16px;',
-    '}',
-    '',
-    '.qml-flexbox-layout {',
-    '  display: flex;',
-    '  flex-wrap: wrap;',
-    '  gap: 16px;',
-    '}',
-    '',
-    '.qml-image {',
-    '  display: block;',
-    '  max-width: 100%;',
-    '}',
-    '',
-    '.qml-unsupported {',
-    '  padding: 8px;',
-    '  border: 1px dashed currentColor;',
-    '}',
-    '',
-    ...collectLayoutScss(doc.root)
-  ].join('\n');
-
-  return { ts, html, scss };
+  return defaultRenderer.render(doc, className);
 }

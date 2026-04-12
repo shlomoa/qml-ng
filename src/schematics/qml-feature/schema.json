@@ -1,0 +1,49 @@
+{
+  "$schema": "http://json-schema.org/schema",
+  "$id": "QmlFeatureSchema",
+  "title": "QML Feature Generator Options",
+  "type": "object",
+  "properties": {
+    "qmlDir": {
+      "type": "string",
+      "description": "Path to the root directory of a QML bundle"
+    },
+    "qmlProject": {
+      "type": "string",
+      "description": "Path to a .qmlproject file whose reachable component graph should be generated"
+    },
+    "path": {
+      "type": "string",
+      "description": "Legacy destination path override for generated components maintained for backward compatibility",
+      "deprecated": true
+    },
+    "recursive": {
+      "type": "boolean",
+      "description": "Recursively process subdirectories when qmlDir is used",
+      "default": true
+    },
+    "project": {
+      "type": "string",
+      "description": "Angular workspace project to generate into"
+    },
+    "feature": {
+      "type": "string",
+      "description": "Feature folder under the target project's app root"
+    },
+    "updateBarrel": {
+      "type": "boolean",
+      "description": "Update the feature barrel file with generated component exports",
+      "default": false
+    },
+    "routeMode": {
+      "type": "string",
+      "description": "Route insertion strategy for standalone component generation",
+      "enum": ["none", "project", "feature"],
+      "default": "none"
+    }
+  },
+  "oneOf": [
+    { "required": ["qmlDir"] },
+    { "required": ["qmlProject"] }
+  ]
+}

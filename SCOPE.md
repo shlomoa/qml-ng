@@ -47,14 +47,16 @@ The goal is predictable, maintainable Angular output for a constrained but usefu
   - Maps to: Flexbox column layout (CSS `display: flex; flex-direction: column`)
 
 - **`StackLayout`**: Layered content with one visible child ⚠️
-  - Status: Planned for v1.0
-  - Maps to: Angular structural directive with single visible child (`*ngIf` pattern)
+  - Status: Approximate support with diagnostics
+  - Maps to: Positioned container with best-effort stacked children; no promise of exact `currentIndex` fidelity
 
 - **`RowLayout`**: Qt Quick Layouts horizontal ⚠️
-  - Status: Evaluate for v1.0 (similar to Row but with different sizing semantics)
+  - Status: Approximate support with diagnostics
+  - Maps to: Flexbox row layout with best-effort `Layout.preferred*` sizing hints
 
 - **`ColumnLayout`**: Qt Quick Layouts vertical ⚠️
-  - Status: Evaluate for v1.0 (similar to Column but with different sizing semantics)
+  - Status: Approximate support with diagnostics
+  - Maps to: Flexbox column layout with best-effort `Layout.preferred*` sizing hints
 
 - **`Loader`**: Dynamic component loading ❌
   - Status: Out of scope for v1.0 (requires advanced runtime component instantiation)
@@ -110,17 +112,22 @@ The goal is predictable, maintainable Angular output for a constrained but usefu
 **Target support**: Common layout anchors and explicit sizing
 
 Supported anchor patterns:
-- **`anchors.fill: parent`** ✅ → CSS positioning (width: 100%, height: 100%)
-- **`anchors.centerIn: parent`** ✅ → Flexbox centering or CSS centering
+- **`anchors.fill: parent`** ✅ exact → CSS absolute fill (`inset: 0`)
+- **`anchors.centerIn: parent`** ⚠️ approximate → CSS absolute centering with translate offsets
 - **Edge anchors** ⚠️ (v1.0 limited):
   - `anchors.left`, `anchors.right`, `anchors.top`, `anchors.bottom`
-  - Status: Simple cases only (parent edge alignment)
+  - Status: Approximate for simple parent edge alignment only
   - Complex: Sibling anchoring and margins require advanced conflict resolution
 
 Supported geometry properties:
-- **`x`, `y`** ⚠️: Absolute positioning (limited; diagnostic for complex cases)
+- **`x`, `y`** ⚠️ approximate: Absolute positioning (limited; diagnostic when anchors or flow layouts take precedence)
 - **`width`, `height`** ✅: Direct size specification
 - **`implicitWidth`, `implicitHeight`** ⚠️: Minimum size hints (map to CSS min-width/min-height)
+
+Precedence and diagnostics:
+- When anchors and `x`/`y` are mixed on the same axis, anchors take precedence and qml-ng emits a diagnostic.
+- When children of `Row`, `Column`, `RowLayout`, `ColumnLayout`, `StackLayout`, `GridLayout`, or `FlexboxLayout` also use anchors or `x`/`y`, the parent flow/container layout takes precedence and qml-ng emits a diagnostic while keeping only size hints.
+- Unsupported `QtQuick.Layouts` properties outside `Layout.preferredWidth` and `Layout.preferredHeight` are diagnosed instead of guessed.
 
 ### 7. Event Handlers
 
@@ -132,9 +139,9 @@ Supported handler patterns:
 - **`onPressed: handler()`** ⚠️ → `(mousedown)="handler()"`
 
 Handler body support:
-- **Single function call**: ✅ Fully supported
-- **Simple assignment**: ⚠️ Limited (e.g., `property = value`)
-- **Complex imperative JS**: ❌ Out of scope for v1.0
+- **Single function call**: ✅ Fully supported as inline Angular template events
+- **Simple assignment**: ⚠️ Lowered through generated component methods/stubs instead of inline template code
+- **Complex imperative JS**: ❌ Out of scope for v1.0 and reported with diagnostics
 
 Diagnostic: Multi-statement handlers produce warning with placeholder
 

@@ -1,0 +1,357 @@
+import { lowerBinding } from '../converter/expression-lowering';
+import { ExpressionNode } from '../qml/expression-ast';
+import { ExpressionParser } from '../qml/expression-parser';
+import { layoutToCssDeclarations } from '../converter/layout-resolver';
+import { isFlowLayoutContainer, suppressAbsolutePositioning } from '../layout/layout-utils';
+import { UiBinding, UiNode } from '../schema/ui-schema';
+import { DiagnosticsEmitter, RenderContext } from './renderer-contract';
+
+const ANGULAR_EXPRESSION_ALLOWLIST_PATTERN = /^[\w\s.$()[\]?:"',+\-*/%<>=!&|]+$/;
+const UNSAFE_EXPRESSION_COMMENT =
+  '/* TODO(qml-ng): Unsupported binding expression contains characters outside the Angular expression allowlist (for example backticks, semicolons, or braces) and needs manual review. */';
+
+export type UiNodeMappingCategory = 'supported' | 'approximated' | 'unsupported';
+export type UiNodeRendererKind = 'angular' | 'material' | 'placeholder' | 'none';
+
+type NodeStringListRule = readonly string[] | ((node: UiNode) => readonly string[]);
+type NodeStringRule = string | ((node: UiNode) => string);
+type NodeCategoryRule = UiNodeMappingCategory | ((node: UiNode) => UiNodeMappingCategory);
+
+type NodeTemplateRenderer = (
+  node: UiNode,
+  context: RenderContext,
+  diagnosticsEmitter: DiagnosticsEmitter,
+  parent?: UiNode
+) => string;
+
+interface UiNodeRenderRuleDefinition {
+  templateRenderer: NodeTemplateRenderer;
+  templateDescription: NodeStringRule;
+  angularImports?: NodeStringListRule;
+  materialImports?: NodeStringListRule;
+  themeHooks?: NodeStringListRule;
+  accessibilityRules?: NodeStringListRule;
+  mappingCategory: NodeCategoryRule;
+  rendererKind: UiNodeRendererKind;
+}
+
+export interface UiNodeRenderRule {
+  templateRenderer: NodeTemplateRenderer;
+  templateDescription: string;
+  angularImports: string[];
+  materialImports: string[];
+  themeHooks: string[];
+  accessibilityRules: string[];
+  mappingCategory: UiNodeMappingCategory;
+  rendererKind: UiNodeRendererKind;
+}
+
+function sanitizeAngularComputedExpression(expression: string): { expression: string; comment?: string } {
+  if (ANGULAR_EXPRESSION_ALLOWLIST_PATTERN.test(expression)) {
+    return { expression };
+  }
+
+  return {
+    expression: 'undefined',
+    comment: UNSAFE_EXPRESSION_COMMENT
+  };
+}
+
+function generateComponentExpression(ast: ExpressionNode, declaredSignalNames: Set<string>): string {
+  switch (ast.kind) {
+    case 'literal':
+      return JSON.stringify(ast.value);
+
+    case 'identifier':
+      return declaredSignalNames.has(ast.name) ? `this.${ast.name}()` : ast.name;
+
+    case 'memberAccess':
+      return `${generateComponentExpression(ast.object, declaredSignalNames)}${ast.optional ? '?.' : '.'}${ast.property}`;
+
+    case 'call':
+      return `${generateComponentExpression(ast.callee, declaredSignalNames)}(${ast.arguments
+        .map(argument => generateComponentExpression(argument, declaredSignalNames))
+        .join(', ')})`;
+
+    case 'unaryOp':
+      return `${ast.operator}${generateComponentExpression(ast.argument, declaredSignalNames)}`;
+
+    case 'binaryOp':
+      return `${generateComponentExpression(ast.left, declaredSignalNames)} ${ast.operator} ${generateComponentExpression(ast.right, declaredSignalNames)}`;
+
+    case 'conditional':
+      return `${generateComponentExpression(ast.test, declaredSignalNames)} ? ${generateComponentExpression(ast.consequent, declaredSignalNames)} : ${generateComponentExpression(ast.alternate, declaredSignalNames)}`;
+
+    case 'array':
+      return `[${ast.elements.map(element => generateComponentExpression(element, declaredSignalNames)).join(', ')}]`;
+  }
+}
+
+function bindingLiteralOrExpr(binding: UiBinding | undefined, fieldPrefix: string, context: RenderContext): string {
+  if (!binding) return "''";
+
+  if (binding.kind === 'literal') {
+    return JSON.stringify(binding.value ?? '');
+  }
+
+  const lowered = lowerBinding(binding.expression ?? '');
+  lowered.binding.dependencies.forEach(dependency => context.dependencyNames.add(dependency));
+  const fieldName = `${fieldPrefix}Expr${++context.computedExpressionCounter}`;
+  let classExpression = lowered.angularExpression;
+  if (binding.expression) {
+    const parser = new ExpressionParser();
+    const result = parser.parse(binding.expression);
+    if (result.ast && result.errors.length === 0) {
+      classExpression = generateComponentExpression(result.ast, new Set(lowered.binding.dependencies));
+    }
+  }
+  const sanitized = sanitizeAngularComputedExpression(classExpression);
+  const computedExpression = sanitized.comment
+    ? `${sanitized.expression} ${sanitized.comment}`
+    : sanitized.expression;
+  context.computedDeclarations.push(`readonly ${fieldName} = computed(() => ${computedExpression});`);
+  return `${fieldName}()`;
+}
+
+function escapeTemplateEventExpression(expression: string): string {
+  return expression
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function renderBoundAttribute(name: string, expression: string): string {
+  const escapedExpression = expression
+    .replace(/&/g, '&amp;')
+    .replace(/'/g, '&#39;');
+  return `[${name}]='${escapedExpression}'`;
+}
+
+function escapeHtmlAttribute(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function renderStyleAttribute(node: UiNode, parent: UiNode | undefined): string {
+  if (!node.layout) return '';
+  if (!parent) {
+    // Root layout is emitted on :host by the SCSS renderer to avoid duplicating host-level positioning.
+    return '';
+  }
+
+  const layout = isFlowLayoutContainer(parent)
+    ? suppressAbsolutePositioning(node.layout)
+    : node.layout;
+
+  const declarations = layoutToCssDeclarations(layout);
+  if (!declarations.length) {
+    return '';
+  }
+
+  return ` style="${escapeHtmlAttribute(declarations.join(' '))}"`;
+}
+
+function containerClassName(node: UiNode): string {
+  if (node.meta?.role === 'window') return 'qml-window';
+  if (node.meta?.role === 'structural') return 'qml-structural';
+  if (node.meta?.role === 'group') return 'qml-group';
+  if (node.meta?.role === 'scroll-view') return 'qml-scroll-view';
+  if (node.meta?.role === 'shape-path') return 'qml-shape-path';
+  if (node.meta?.layoutKind === 'stack') return 'qml-stack-layout';
+  if (node.meta?.layoutKind === 'grid') return 'qml-grid-layout';
+  if (node.meta?.layoutKind === 'flexbox') return 'qml-flexbox-layout';
+  if (node.meta?.layoutKind === 'row-layout') return 'qml-row-layout';
+  if (node.meta?.layoutKind === 'column-layout') return 'qml-column-layout';
+  if (node.meta?.orientation === 'row') return 'qml-row';
+  return 'qml-column';
+}
+
+function trackGeneratedMethod(node: UiNode, context: RenderContext): void {
+  for (const event of node.events) {
+    if (!event.generatedMethod || context.requiredGeneratedMethodNames.has(event.generatedMethod.name)) {
+      continue;
+    }
+
+    context.requiredGeneratedMethodNames.add(event.generatedMethod.name);
+    context.requiredGeneratedMethods.push(event);
+  }
+}
+
+function renderEvents(node: UiNode, context: RenderContext): string {
+  if (!node.events.length) return '';
+  const renderedEvents = node.events.flatMap(event => {
+    if (event.behavior === 'unsupported') {
+      return [];
+    }
+
+    if (event.behavior === 'method' && event.generatedMethod) {
+      trackGeneratedMethod(node, context);
+      return [`(${event.angularEvent})="${escapeTemplateEventExpression(`${event.generatedMethod.name}()`)}"`];
+    }
+
+    if (event.behavior === 'inline' && event.handlerModel?.kind === 'call') {
+      return [`(${event.angularEvent})="${escapeTemplateEventExpression(event.handlerModel.expression)}"`];
+    }
+
+    return [];
+  });
+
+  return renderedEvents.length > 0 ? ` ${renderedEvents.join(' ')}` : '';
+}
+
+function renderContainer(node: UiNode, context: RenderContext, diagnosticsEmitter: DiagnosticsEmitter, parent?: UiNode): string {
+  const className = containerClassName(node);
+  const content = node.children.map(child => renderNodeFromRegistry(child, context, diagnosticsEmitter, node)).filter(Boolean).join('\n');
+  return `<div class="${className}"${renderStyleAttribute(node, parent)}${renderEvents(node, context)}>${content ? `\n${content}\n` : ''}</div>`;
+}
+
+function renderText(node: UiNode, context: RenderContext, _diagnosticsEmitter: DiagnosticsEmitter, parent?: UiNode): string {
+  const textExpr = bindingLiteralOrExpr(node.text, 'text', context);
+  return `<span${renderStyleAttribute(node, parent)}${renderEvents(node, context)}>{{ ${textExpr} }}</span>`;
+}
+
+function renderInput(node: UiNode, context: RenderContext, _diagnosticsEmitter: DiagnosticsEmitter, parent?: UiNode): string {
+  const placeholderExpr = bindingLiteralOrExpr(node.placeholder, 'placeholder', context);
+  return [
+    `<mat-form-field appearance="outline"${renderStyleAttribute(node, parent)}${renderEvents(node, context)}>`,
+    `  <input matInput ${renderBoundAttribute('placeholder', placeholderExpr)}>`,
+    '</mat-form-field>'
+  ].join('\n');
+}
+
+function renderImage(node: UiNode, context: RenderContext, _diagnosticsEmitter: DiagnosticsEmitter, parent?: UiNode): string {
+  const sourceExpr = bindingLiteralOrExpr(node.source, 'imageSource', context);
+  return `<img class="qml-image"${renderStyleAttribute(node, parent)}${renderEvents(node, context)} ${renderBoundAttribute('src', sourceExpr)}>`;
+}
+
+function renderButton(node: UiNode, context: RenderContext, _diagnosticsEmitter: DiagnosticsEmitter, parent?: UiNode): string {
+  const textExpr = bindingLiteralOrExpr(node.text, 'buttonText', context);
+  return `<button mat-raised-button${renderStyleAttribute(node, parent)}${renderEvents(node, context)}>{{ ${textExpr} }}</button>`;
+}
+
+function renderAnimation(node: UiNode): string {
+  return node.name
+    ? `<!-- qml-ng: ignored ${node.name.replace(/--/g, '—').trim()} node. -->`
+    : '';
+}
+
+function renderUnknown(node: UiNode, _context: RenderContext, diagnosticsEmitter: DiagnosticsEmitter): string {
+  return diagnosticsEmitter.renderUnsupportedNode(node);
+}
+
+function resolveStringList(rule: NodeStringListRule | undefined, node: UiNode): string[] {
+  if (!rule) {
+    return [];
+  }
+
+  const resolved = typeof rule === 'function' ? rule(node) : rule;
+  return [...resolved];
+}
+
+function resolveString(rule: NodeStringRule, node: UiNode): string {
+  return typeof rule === 'function' ? rule(node) : rule;
+}
+
+function resolveCategory(rule: NodeCategoryRule, node: UiNode): UiNodeMappingCategory {
+  return typeof rule === 'function' ? rule(node) : rule;
+}
+
+const UI_NODE_RENDER_REGISTRY: Record<UiNode['kind'], UiNodeRenderRuleDefinition> = {
+  container: {
+    templateRenderer: renderContainer,
+    templateDescription: node => `div.${containerClassName(node)}`,
+    mappingCategory: 'approximated',
+    rendererKind: 'angular',
+    themeHooks: ['layout-container-styles'],
+    accessibilityRules: ['Container mappings preserve structure and events but do not infer ARIA semantics automatically.']
+  },
+  text: {
+    templateRenderer: renderText,
+    templateDescription: 'span with Angular interpolation',
+    mappingCategory: 'supported',
+    rendererKind: 'angular',
+    accessibilityRules: ['Text content is escaped through Angular interpolation.']
+  },
+  input: {
+    templateRenderer: renderInput,
+    templateDescription: 'mat-form-field + input[matInput]',
+    mappingCategory: 'approximated',
+    rendererKind: 'material',
+    materialImports: ['MatFormFieldModule', 'MatInputModule'],
+    themeHooks: ['material-form-field-theme'],
+    accessibilityRules: ['Current TextField mapping preserves placeholder text but does not yet synthesize a visible label.']
+  },
+  button: {
+    templateRenderer: renderButton,
+    templateDescription: 'button[mat-raised-button]',
+    mappingCategory: 'supported',
+    rendererKind: 'material',
+    materialImports: ['MatButtonModule'],
+    themeHooks: ['material-button-theme'],
+    accessibilityRules: ['Buttons should expose a text label or a future aria-label mapping.']
+  },
+  image: {
+    templateRenderer: renderImage,
+    templateDescription: 'img.qml-image',
+    mappingCategory: 'supported',
+    rendererKind: 'angular',
+    accessibilityRules: ['Image mappings preserve the src binding but do not infer alt text automatically.']
+  },
+  animation: {
+    templateRenderer: renderAnimation,
+    templateDescription: 'no emitted markup',
+    mappingCategory: 'unsupported',
+    rendererKind: 'none',
+    accessibilityRules: ['Non-visual animation nodes are skipped conservatively until an explicit Angular strategy exists.']
+  },
+  unknown: {
+    templateRenderer: renderUnknown,
+    templateDescription: node => `unsupported placeholder for ${node.name ?? 'unknown'}`,
+    mappingCategory: 'unsupported',
+    rendererKind: 'placeholder',
+    accessibilityRules: ['Unsupported nodes render explicit placeholders so missing semantics stay visible in generated output.']
+  }
+};
+
+export function getUiNodeRenderRule(node: UiNode): UiNodeRenderRule {
+  const rule = UI_NODE_RENDER_REGISTRY[node.kind];
+  return {
+    templateRenderer: rule.templateRenderer,
+    templateDescription: resolveString(rule.templateDescription, node),
+    angularImports: resolveStringList(rule.angularImports, node),
+    materialImports: resolveStringList(rule.materialImports, node),
+    themeHooks: resolveStringList(rule.themeHooks, node),
+    accessibilityRules: resolveStringList(rule.accessibilityRules, node),
+    mappingCategory: resolveCategory(rule.mappingCategory, node),
+    rendererKind: rule.rendererKind
+  };
+}
+
+export function renderNodeFromRegistry(
+  node: UiNode,
+  context: RenderContext,
+  diagnosticsEmitter: DiagnosticsEmitter,
+  parent?: UiNode
+): string {
+  return getUiNodeRenderRule(node).templateRenderer(node, context, diagnosticsEmitter, parent);
+}
+
+export function collectComponentImportsFromRegistry(root: UiNode): string[] {
+  const imports = new Set<string>();
+
+  function walk(node: UiNode): void {
+    const rule = getUiNodeRenderRule(node);
+    for (const importName of [...rule.angularImports, ...rule.materialImports]) {
+      imports.add(importName);
+    }
+    node.children.forEach(walk);
+  }
+
+  walk(root);
+  return [...imports].sort();
+}

@@ -1,151 +1,329 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { renderAngularMaterial } from './lib/angular/material-renderer';
-import { qmlToUiDocument } from './lib/converter/qml-to-ui';
-import { parseQml } from './lib/qml/parser';
-import { convertQmlBatch, convertQmlFile, findQmlFiles } from './lib/converter/batch-converter';
-import { PerformanceTracker } from './lib/perf/performance-tracker';
+import { collectQmlFiles, convertQmlFile, convertDirectory, FileConversionResult, formatBatchSummary, summarizeBatch } from './lib/batch/batch-converter';
+import { countDiagnosticsBySeverity, formatDiagnosticCounts, formatDiagnostics } from './lib/diagnostics/formatter';
+import { dasherize } from './lib/naming';
 
-function pascalCase(name: string): string {
-  return name
-    .split(/[^A-Za-z0-9]+/)
-    .filter(Boolean)
-    .map(part => part[0].toUpperCase() + part.slice(1))
-    .join('');
+interface CliOptions {
+  inputPath: string;
+  componentName?: string;
+  outputDir?: string;
+  dryRun: boolean;
+  diff: boolean;
+  strict: boolean;
+  batch: boolean;
+  recursive: boolean;
+  verbose: boolean;
 }
+
+const MAX_DIFF_MATRIX_CELLS = 250_000;
 
 function printUsage(): void {
-  console.log('Usage:');
-  console.log('  qml-ng <input.qml> [--name <component-name>] [--perf]');
-  console.log('  qml-ng --batch <directory> [--perf] [--max-files <n>]');
-  console.log('');
-  console.log('Options:');
-  console.log('  --name <name>      Component name (default: derived from filename)');
-  console.log('  --perf             Show performance metrics');
-  console.log('  --batch <dir>      Process all QML files in directory');
-  console.log('  --max-files <n>    Maximum number of files to process in batch mode');
+  console.error(
+    [
+      'Usage: qml-ng <input.qml | input-directory> [options]',
+      '',
+      'Options:',
+      '  --name <component-name>  Override the generated component name for single-file input',
+      '  --output-dir <dir>       Write generated files to this directory',
+      '  --dry-run                Preview generated files without writing them',
+      '  --diff                   Show line-by-line diffs against files in --output-dir',
+      '  --strict                 Exit with code 1 when unsupported features are detected',
+      '  --batch                  Treat the input path as a directory bundle',
+      '  --no-recursive           Do not recurse into subdirectories in batch mode',
+      '  --verbose                Print per-file diagnostics in batch mode'
+    ].join('\n')
+  );
 }
 
-const [, , firstArg, ...rest] = process.argv;
+function parseArgs(argv: string[]): CliOptions | undefined {
+  const [inputPath, ...rest] = argv;
+  if (!inputPath) {
+    return undefined;
+  }
 
-if (!firstArg || firstArg === '--help' || firstArg === '-h') {
-  printUsage();
-  process.exit(firstArg ? 0 : 1);
+  const options: CliOptions = {
+    inputPath,
+    dryRun: false,
+    diff: false,
+    strict: false,
+    batch: false,
+    recursive: true,
+    verbose: false
+  };
+
+  for (let index = 0; index < rest.length; index += 1) {
+    const arg = rest[index];
+    switch (arg) {
+      case '--name':
+        options.componentName = rest[++index];
+        break;
+      case '--output-dir':
+        options.outputDir = rest[++index];
+        break;
+      case '--dry-run':
+        options.dryRun = true;
+        break;
+      case '--diff':
+        options.diff = true;
+        break;
+      case '--strict':
+        options.strict = true;
+        break;
+      case '--batch':
+        options.batch = true;
+        break;
+      case '--no-recursive':
+        options.recursive = false;
+        break;
+      case '--verbose':
+        options.verbose = true;
+        break;
+      default:
+        console.error(`Unknown option: ${arg}`);
+        return undefined;
+    }
+  }
+
+  return options;
 }
 
-// Parse command line arguments
-const hasPerf = rest.includes('--perf');
-const batchMode = firstArg === '--batch';
-const nameIndex = rest.indexOf('--name');
-const maxFilesIndex = rest.indexOf('--max-files');
+function ensureOptionValue(value: string | undefined, flag: string): string {
+  if (!value) {
+    throw new Error(`Missing value for ${flag}`);
+  }
+  return value;
+}
 
-if (batchMode) {
-  // Batch mode: process multiple files
-  const batchDirIndex = rest.indexOf('--batch');
-  const batchDir = batchDirIndex >= 0 ? rest[batchDirIndex + 1] : rest[0];
+function readExistingFile(filePath: string): string {
+  return fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf8') : '';
+}
 
-  if (!batchDir) {
-    console.error('Error: --batch requires a directory argument');
+type DiffOperation = { type: 'equal' | 'add' | 'remove'; line: string };
+
+function diffLines(left: string[], right: string[]): DiffOperation[] {
+  const matrix = Array.from({ length: left.length + 1 }, () => Array<number>(right.length + 1).fill(0));
+
+  for (let i = left.length - 1; i >= 0; i -= 1) {
+    for (let j = right.length - 1; j >= 0; j -= 1) {
+      matrix[i][j] = left[i] === right[j]
+        ? matrix[i + 1][j + 1] + 1
+        : Math.max(matrix[i + 1][j], matrix[i][j + 1]);
+    }
+  }
+
+  const operations: DiffOperation[] = [];
+  let i = 0;
+  let j = 0;
+  while (i < left.length && j < right.length) {
+    if (left[i] === right[j]) {
+      operations.push({ type: 'equal', line: left[i] });
+      i += 1;
+      j += 1;
+      continue;
+    }
+
+    if (matrix[i + 1][j] >= matrix[i][j + 1]) {
+      operations.push({ type: 'remove', line: left[i] });
+      i += 1;
+    } else {
+      operations.push({ type: 'add', line: right[j] });
+      j += 1;
+    }
+  }
+
+  while (i < left.length) {
+    operations.push({ type: 'remove', line: left[i++] });
+  }
+
+  while (j < right.length) {
+    operations.push({ type: 'add', line: right[j++] });
+  }
+
+  return operations;
+}
+
+function renderDiff(filePath: string, before: string, after: string): string {
+  if (before === after) {
+    return `No changes: ${filePath}`;
+  }
+
+  const left = before.split('\n');
+  const right = after.split('\n');
+  if ((left.length + 1) * (right.length + 1) > MAX_DIFF_MATRIX_CELLS) {
+    return [
+      `--- ${filePath}`,
+      `+++ ${filePath}`,
+      `# qml-ng diff fallback: file too large for detailed line diff (${left.length} -> ${right.length} lines)`
+    ].join('\n');
+  }
+
+  const diff = diffLines(left, right)
+    .map(operation => {
+      const prefix = operation.type === 'equal'
+        ? ' '
+        : operation.type === 'add'
+          ? '+'
+          : '-';
+      return `${prefix}${operation.line}`;
+    })
+    .join('\n');
+
+  return [`--- ${filePath}`, `+++ ${filePath}`, diff].join('\n');
+}
+
+function writeGeneratedFiles(result: FileConversionResult, outputDir: string): void {
+  for (const generatedFile of result.generatedFiles) {
+    const destination = path.join(outputDir, generatedFile.relativePath);
+    fs.mkdirSync(path.dirname(destination), { recursive: true });
+    fs.writeFileSync(destination, generatedFile.content, 'utf8');
+    console.log(`Wrote ${destination}`);
+  }
+}
+
+function printGeneratedFilePlan(result: FileConversionResult, outputDir?: string): void {
+  for (const generatedFile of result.generatedFiles) {
+    const destination = outputDir
+      ? path.join(outputDir, generatedFile.relativePath)
+      : generatedFile.relativePath;
+    console.log(`Would write ${destination}`);
+  }
+}
+
+function printGeneratedFileDiffs(result: FileConversionResult, outputDir: string): void {
+  for (const generatedFile of result.generatedFiles) {
+    const destination = path.join(outputDir, generatedFile.relativePath);
+    console.log(renderDiff(destination, readExistingFile(destination), generatedFile.content));
+  }
+}
+
+function printSingleFileOutput(result: FileConversionResult): void {
+  console.log('----- TS -----');
+  console.log(result.rendered.ts);
+  console.log('----- HTML -----');
+  console.log(result.rendered.html);
+  console.log('----- SCSS -----');
+  console.log(result.rendered.scss);
+  console.log('----- DIAGNOSTICS -----');
+  console.log(formatDiagnostics(result.diagnostics).join('\n') || 'None');
+}
+
+function printBatchResult(result: FileConversionResult, verbose: boolean): void {
+  const counts = countDiagnosticsBySeverity(result.diagnostics);
+  console.log(
+    `${result.status.toUpperCase()} ${result.relativeSourcePath} (${formatDiagnosticCounts(counts)})`
+  );
+
+  if (verbose && result.diagnostics.length > 0) {
+    for (const diagnostic of formatDiagnostics(result.diagnostics)) {
+      console.log(`  ${diagnostic}`);
+    }
+  }
+}
+
+function finalizeStrictMode(results: FileConversionResult[], strict: boolean): void {
+  if (!strict) {
+    return;
+  }
+
+  const failures = results.filter(result => result.strictViolation);
+  if (failures.length === 0) {
+    return;
+  }
+
+  console.error(`Strict mode failed: ${failures.length} file(s) contain unsupported features or errors.`);
+  throw new Error('CLI_STRICT_MODE_FAILED');
+}
+
+export function runCli(argv: string[]): number {
+  const options = parseArgs(argv);
+
+  if (!options) {
     printUsage();
-    process.exit(1);
+    return 1;
   }
 
-  if (!fs.existsSync(batchDir)) {
-    console.error(`Error: Directory not found: ${batchDir}`);
-    process.exit(1);
+  try {
+    options.componentName = options.componentName ? ensureOptionValue(options.componentName, '--name') : undefined;
+    options.outputDir = options.outputDir ? ensureOptionValue(options.outputDir, '--output-dir') : undefined;
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    printUsage();
+    return 1;
   }
 
-  const maxFiles = maxFilesIndex >= 0 ? parseInt(rest[maxFilesIndex + 1], 10) : undefined;
-  let qmlFiles = findQmlFiles(batchDir);
-
-  if (maxFiles && qmlFiles.length > maxFiles) {
-    qmlFiles = qmlFiles.slice(0, maxFiles);
+  if (options.diff && !options.outputDir) {
+    console.error('--diff requires --output-dir so qml-ng can compare against generated files on disk.');
+    return 1;
   }
 
-  console.log(`Found ${qmlFiles.length} QML file(s) in ${batchDir}`);
-  console.log('');
+  const inputPath = path.resolve(options.inputPath);
+  if (!fs.existsSync(inputPath)) {
+    console.error(`Input not found: ${inputPath}`);
+    return 1;
+  }
 
-  convertQmlBatch(qmlFiles, {
-    trackPerformance: hasPerf,
-    continueOnError: true,
-    onProgress: (current, total, file) => {
-      process.stdout.write(`\rProcessing ${current}/${total}: ${path.basename(file).padEnd(30).slice(0, 30)}`);
-    },
-  }).then(result => {
-    console.log('\n');
-    console.log('=== Batch Conversion Results ===');
-    console.log(`Total files: ${result.totalFiles}`);
-    console.log(`Successful: ${result.successCount}`);
-    console.log(`Errors: ${result.errorCount}`);
+  try {
+    const stat = fs.statSync(inputPath);
+    const isBatch = options.batch || stat.isDirectory();
 
-    if (result.errorCount > 0) {
-      console.log('\nErrors:');
-      const errors = result.results.filter(r => !r.success);
-      for (const err of errors.slice(0, 10)) {
-        console.log(`  ${path.basename(err.inputPath)}: ${err.error}`);
+    if (isBatch) {
+      const batchDir = stat.isDirectory() ? inputPath : path.dirname(inputPath);
+      const results = stat.isDirectory()
+        ? convertDirectory(batchDir, options.recursive)
+        : collectQmlFiles(batchDir, options.recursive)
+          .filter(filePath => filePath === inputPath)
+          .map(filePath => convertQmlFile(filePath, { rootDir: batchDir }));
+
+      for (const result of results) {
+        printBatchResult(result, options.verbose);
+        if (options.diff && options.outputDir) {
+          printGeneratedFileDiffs(result, options.outputDir);
+          continue;
+        }
+
+        if (options.dryRun || !options.outputDir) {
+          printGeneratedFilePlan(result, options.outputDir);
+          continue;
+        }
+
+        writeGeneratedFiles(result, options.outputDir);
       }
-      if (errors.length > 10) {
-        console.log(`  ... and ${errors.length - 10} more`);
+
+      console.log(formatBatchSummary(summarizeBatch(results)));
+      finalizeStrictMode(results, options.strict);
+      return 0;
+    }
+
+    const inferredComponentName = path.basename(inputPath).replace(/(\.ui)?\.qml$/, '');
+    const componentName = options.componentName ?? (inferredComponentName || dasherize(inputPath));
+    const result = convertQmlFile(inputPath, { componentName, rootDir: path.dirname(inputPath) });
+
+    if (options.diff && options.outputDir) {
+      printGeneratedFileDiffs(result, options.outputDir);
+    } else if (options.dryRun || options.outputDir) {
+      if (!options.dryRun && options.outputDir) {
+        writeGeneratedFiles(result, options.outputDir);
+      } else {
+        printGeneratedFilePlan(result, options.outputDir);
       }
+      console.log(formatDiagnostics(result.diagnostics).join('\n') || 'None');
+    } else {
+      printSingleFileOutput(result);
     }
 
-    if (hasPerf && result.aggregateMetrics) {
-      console.log('\n=== Performance Metrics ===');
-      const metrics = result.aggregateMetrics.generateReport(result.totalFiles);
-      console.log(PerformanceTracker.formatReport(metrics));
+    finalizeStrictMode([result], options.strict);
+    return 0;
+  } catch (error) {
+    if (error instanceof Error && error.message === 'CLI_STRICT_MODE_FAILED') {
+      return 1;
     }
-  }).catch(err => {
-    console.error('Batch conversion failed:', err);
-    process.exit(1);
-  });
-} else {
-  // Single file mode (original behavior)
-  const inputFile = firstArg;
 
-  if (!fs.existsSync(inputFile)) {
-    console.error(`Error: File not found: ${inputFile}`);
-    process.exit(1);
+    console.error(error instanceof Error ? error.message : String(error));
+    return 1;
   }
+}
 
-  const rawName = nameIndex >= 0 ? rest[nameIndex + 1] : path.basename(inputFile, '.qml');
-  const componentName = rawName || 'qml-component';
-
-  if (hasPerf) {
-    // Use batch converter for single file with performance tracking
-    const result = convertQmlFile(inputFile, componentName, { trackPerformance: true });
-
-    if (!result.success) {
-      console.error(`Error: ${result.error}`);
-      process.exit(1);
-    }
-
-    console.log('----- TS -----');
-    console.log(result.rendered!.ts);
-    console.log('----- HTML -----');
-    console.log(result.rendered!.html);
-    console.log('----- SCSS -----');
-    console.log(result.rendered!.scss);
-    console.log('----- DIAGNOSTICS -----');
-    console.log(result.document!.diagnostics.join('\n') || 'None');
-
-    if (result.tracker) {
-      console.log('\n----- PERFORMANCE METRICS -----');
-      const metrics = result.tracker.generateReport(1);
-      console.log(PerformanceTracker.formatReport(metrics));
-    }
-  } else {
-    // Original fast path without performance tracking
-    const qml = fs.readFileSync(inputFile, 'utf-8');
-    const document = qmlToUiDocument(componentName, parseQml(qml));
-    const rendered = renderAngularMaterial(document, `${pascalCase(componentName)}Component`);
-
-    console.log('----- TS -----');
-    console.log(rendered.ts);
-    console.log('----- HTML -----');
-    console.log(rendered.html);
-    console.log('----- SCSS -----');
-    console.log(rendered.scss);
-    console.log('----- DIAGNOSTICS -----');
-    console.log(document.diagnostics.join('\n') || 'None');
-  }
+if (require.main === module) {
+  process.exit(runCli(process.argv.slice(2)));
 }

@@ -1,10 +1,26 @@
 export * from './lib/qml/ast';
-export * from './lib/qml/tokenizer';
+export { tokenizeQml, Token, TokenKind, SourceLocation as TokenSourceLocation } from './lib/qml/tokenizer';
 export * from './lib/qml/parser';
+export * from './lib/naming';
 export * from './lib/schema/ui-schema';
-export * from './lib/converter/expression-lowering';
-export * from './lib/converter/event-mapper';
-export * from './lib/converter/layout-resolver';
+export {
+  DiagnosticCounts,
+  countDiagnosticsBySeverity,
+  formatDiagnosticCounts,
+  formatDiagnostics,
+  hasStrictModeViolations
+} from './lib/diagnostics/formatter';
+export * from './lib/batch/batch-converter';
+export { LoweredExpression } from './lib/converter/expression-lowering';
+export { layoutToScss } from './lib/converter/layout-resolver';
 export * from './lib/converter/qml-to-ui';
 export * from './lib/angular/material-imports';
+export * from './lib/angular/renderer-contract';
+export * from './lib/angular/diagnostics-emitter';
+export * from './lib/angular/html-renderer';
+export * from './lib/angular/imports-resolver';
 export * from './lib/angular/material-renderer';
+export * from './lib/angular/naming-service';
+export * from './lib/angular/scss-renderer';
+export * from './lib/angular/typescript-renderer';
+export * from './lib/passes';
