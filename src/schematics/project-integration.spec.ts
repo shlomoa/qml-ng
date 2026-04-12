@@ -25,7 +25,7 @@ function createWorkspaceTree(): Tree {
   return tree;
 }
 
-function writeTempBundle(): { rootDir: string; qmlProject: string } {
+function writeTempBundle(): { rootDir: string; qmlProject: string; cleanup: () => void } {
   const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'qml-ng-bundle-'));
   const bundleDir = path.join(rootDir, 'bundle');
   const assetDir = path.join(bundleDir, 'assets');
@@ -62,7 +62,13 @@ Project {
     'utf8'
   );
 
-  return { rootDir, qmlProject };
+  return {
+    rootDir,
+    qmlProject,
+    cleanup: () => {
+      fs.rmSync(rootDir, { recursive: true, force: true });
+    }
+  };
 }
 
 function createGeneratedComponent(tree: Tree, feature: string, relativeDirectory: string[], name: string): void {
@@ -75,7 +81,7 @@ function createGeneratedComponent(tree: Tree, feature: string, relativeDirectory
 test('qml-feature schematic generates reachable bundle components, copies assets, and updates workspace files', async () => {
   const runner = new SchematicTestRunner('qml-ng', collectionPath);
   const tree = createWorkspaceTree();
-  const { rootDir, qmlProject } = writeTempBundle();
+  const { qmlProject, cleanup } = writeTempBundle();
 
   try {
     const result = await runner.runSchematic('qml-feature', {
@@ -105,7 +111,7 @@ test('qml-feature schematic generates reachable bundle components, copies assets
       /path: 'bundle\/app'/
     );
   } finally {
-    fs.rmSync(rootDir, { recursive: true, force: true });
+    cleanup();
   }
 });
 
@@ -135,7 +141,7 @@ test('update-routes schematic rebuilds route entries from generated component fi
 test('migrate-generated and validate-generated schematics keep project integration files consistent', async () => {
   const runner = new SchematicTestRunner('qml-ng', collectionPath);
   const tree = createWorkspaceTree();
-  const { rootDir, qmlProject } = writeTempBundle();
+  const { qmlProject, cleanup } = writeTempBundle();
 
   try {
     const generated = await runner.runSchematic('qml-feature', {
@@ -165,6 +171,6 @@ test('migrate-generated and validate-generated schematics keep project integrati
 
     assert.ok(validated.exists('/projects/demo-app/src/app/showcase/feature.routes.ts'));
   } finally {
-    fs.rmSync(rootDir, { recursive: true, force: true });
+    cleanup();
   }
 });

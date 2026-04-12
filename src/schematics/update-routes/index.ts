@@ -1,5 +1,5 @@
 import { Rule, SchematicContext, Tree } from '@angular-devkit/schematics';
-import { discoverGeneratedComponentPlans, ensureRouteMode } from '../generated-project';
+import { discoverGeneratedComponentPlans, requireActiveRouteMode } from '../generated-project';
 import { updateRouteFile } from '../workspace-generation';
 
 interface Options {
@@ -11,7 +11,7 @@ interface Options {
 
 export function updateRoutesSchematic(options: Options): Rule {
   return (tree: Tree, context: SchematicContext) => {
-    const routeMode = ensureRouteMode(options.routeMode ?? 'feature');
+    const routeMode = requireActiveRouteMode(options.routeMode ?? 'feature');
     const plans = discoverGeneratedComponentPlans(tree, { ...options, routeMode });
 
     if (plans.length === 0) {

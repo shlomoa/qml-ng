@@ -63,7 +63,7 @@ export function discoverGeneratedComponentPlans(
     );
 }
 
-export function ensureRouteMode(routeMode: RouteMode): RouteMode {
+export function requireActiveRouteMode(routeMode: RouteMode): RouteMode {
   if (routeMode === 'none') {
     throw new Error('routeMode "none" does not update any route configuration');
   }
@@ -104,6 +104,7 @@ export function updateGeneratedProjectArtifacts(
 }
 
 function componentLabel(plan: WorkspaceComponentPlan): string {
+  // Error messages use the generated class stem instead of the full Angular class name suffix.
   return plan.className.replace(/Component$/, '');
 }
 

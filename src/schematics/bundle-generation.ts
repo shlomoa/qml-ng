@@ -118,6 +118,8 @@ function computeRuntimeAssetPath(assetRoot: string, relativeAssetPath: string): 
   const markerIndex = normalizedRoot.indexOf(sourceRootMarker);
 
   if (markerIndex < 0) {
+    // Workspace-aware runtime asset URLs are only inferred when the generated asset destination
+    // lives under a conventional Angular source root path such as `.../src/assets/...`.
     return undefined;
   }
 
@@ -140,6 +142,8 @@ function normalizeRelativeAssetReference(value: string): string | undefined {
     normalized.startsWith('/') ||
     normalized.startsWith('qrc:/') ||
     normalized.startsWith('data:') ||
+    // Match general URI schemes like `http:`, `file:`, or custom schemes so only bundle-local
+    // filesystem paths are rewritten and copied into the Angular workspace.
     /^[A-Za-z][A-Za-z0-9+.-]*:/.test(normalized)
   ) {
     return undefined;
@@ -229,6 +233,8 @@ function rewriteBundleAssetBindings(
 }
 
 export function formatDiagnostics(diagnostics: UiDiagnostic[]): string[] {
+  // Keep schematic logging on one canonical, compact format so warnings stay deterministic across
+  // single-file and bundle-generation entry points.
   return diagnostics.map(diagnostic => {
     const severity = diagnostic.severity.toUpperCase();
     const code = diagnostic.code ? ` ${diagnostic.code}` : '';
