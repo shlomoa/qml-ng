@@ -39,12 +39,20 @@ function candidatePaths(typeName: string): string[] {
   return [`${typeName}.qml`, `${typeName}.ui.qml`];
 }
 
-function collectFiles(rootDir: string, names: Set<string>, output: string[]): void {
+// Cache for resolved paths to avoid repeated file system searches
+const resolveCache = new Map<string, string | undefined>();
+
+function collectFiles(rootDir: string, names: Set<string>, output: string[], depth: number = 0, maxDepth: number = 5): void {
+  // Prevent infinite recursion by limiting depth
+  if (depth > maxDepth) {
+    return;
+  }
+
   try {
     for (const entry of fs.readdirSync(rootDir, { withFileTypes: true })) {
       const fullPath = path.join(rootDir, entry.name);
       if (entry.isDirectory()) {
-        collectFiles(fullPath, names, output);
+        collectFiles(fullPath, names, output, depth + 1, maxDepth);
         continue;
       }
 
@@ -58,6 +66,14 @@ function collectFiles(rootDir: string, names: Set<string>, output: string[]): vo
 }
 
 function resolveQmlObjectSourcePath(typeName: string, options: QmlParseOptions = {}): string | undefined {
+  // Create a cache key based on typeName and searchRoots
+  const cacheKey = `${typeName}:${(options.searchRoots ?? []).join(',')}:${options.filePath ?? ''}`;
+
+  // Check cache first
+  if (resolveCache.has(cacheKey)) {
+    return resolveCache.get(cacheKey);
+  }
+
   const names = candidatePaths(typeName);
   const candidates: string[] = [];
   const seen = new Set<string>();
@@ -82,13 +98,35 @@ function resolveQmlObjectSourcePath(typeName: string, options: QmlParseOptions =
     for (const name of names) {
       addCandidate(path.join(dir, name));
     }
+
+    // If we found a candidate in the same directory, return it immediately
+    if (candidates.length > 0) {
+      const result = candidates.sort((left, right) => left.localeCompare(right))[0];
+      resolveCache.set(cacheKey, result);
+      return result;
+    }
   }
 
-  for (const root of options.searchRoots ?? []) {
-    collectFiles(root, new Set(names), candidates);
+  // Only search in searchRoots if we didn't find it in the same directory
+  // Skip searchRoots entirely if the array is empty
+  const searchRoots = options.searchRoots ?? [];
+  if (searchRoots.length > 0) {
+    for (const root of searchRoots) {
+      collectFiles(root, new Set(names), candidates);
+      // Early exit if we found candidates
+      if (candidates.length > 0) {
+        break;
+      }
+    }
   }
 
-  return candidates.sort((left, right) => left.localeCompare(right))[0];
+  const result = candidates.length > 0
+    ? candidates.sort((left, right) => left.localeCompare(right))[0]
+    : undefined;
+
+  // Cache the result
+  resolveCache.set(cacheKey, result);
+  return result;
 }
 
 class Parser {
@@ -340,7 +378,11 @@ class Parser {
     };
 
     if (resolveSourcePath) {
-      node.resolvedSourcePath = resolveQmlObjectSourcePath(type, this.options);
+      const childOptions: QmlParseOptions = {
+        filePath: this.options.filePath,
+        searchRoots: [] // Don't search recursively for child objects
+      };
+      node.resolvedSourcePath = resolveQmlObjectSourcePath(type, childOptions);
     }
 
     return node;
@@ -712,7 +754,18 @@ class Parser {
       while (!this.match('eof') && !(this.match('other') && this.peek().value === ')')) {
         if (this.match('identifier')) {
           const paramName = this.expect('identifier').value;
-          parameters.push({ name: paramName });
+          let paramType: string | undefined;
+
+          // Check for type annotation (e.g., "p: point")
+          if (this.match('colon')) {
+            this.expect('colon');
+            this.skipNoise();
+            if (this.match('identifier')) {
+              paramType = this.expect('identifier').value;
+            }
+          }
+
+          parameters.push({ name: paramName, type: paramType });
         }
         this.skipNoise();
         if (this.match('comma')) {
@@ -727,6 +780,15 @@ class Parser {
     }
 
     this.skipNoise();
+
+    // Check for return type annotation (e.g., ": real")
+    if (this.match('colon')) {
+      this.expect('colon');
+      this.skipNoise();
+      if (this.match('identifier')) {
+        this.expect('identifier'); // return type - we parse it but don't store it
+      }
+    }
 
     // Parse function body
     const bodyParts: string[] = [];
@@ -834,20 +896,23 @@ class Parser {
       return;
     }
 
-    let depth = 0;
-    while (!this.match('eof')) {
+    // Consume the opening brace
+    this.index += 1;
+    let depth = 1; // Start at 1 since we already consumed the opening brace
+
+    while (!this.match('eof') && depth > 0) {
       const token = this.peek();
-      if (token.kind === 'lbrace') depth += 1;
-      if (token.kind === 'rbrace') {
+      if (token.kind === 'lbrace') {
+        depth += 1;
+      } else if (token.kind === 'rbrace') {
         depth -= 1;
-        if (capture) capture.push(token.value);
-        this.index += 1;
-        if (depth === 0) {
-          return;
-        }
-        continue;
       }
-      if (capture) capture.push(this.tokenText(token));
+
+      if (capture && depth > 0) {
+        // Don't capture the final closing brace
+        capture.push(this.tokenText(token));
+      }
+
       this.index += 1;
     }
   }
