@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { renderAngularMaterial, RenderedAngularComponent } from '../angular/material-renderer';
+import { renderAngularMaterial } from '../angular/material-renderer';
+import { RenderedAngularComponent } from '../angular/renderer-contract';
 import { qmlToUiDocument } from '../converter/qml-to-ui';
 import { formatDiagnosticCounts, countDiagnosticsBySeverity, DiagnosticCounts, hasStrictModeViolations } from '../diagnostics/formatter';
 import { componentClassName, dasherize } from '../naming';

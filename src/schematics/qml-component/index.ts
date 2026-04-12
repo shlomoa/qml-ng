@@ -1,44 +1,56 @@
 import * as fs from 'node:fs';
-import * as path from 'node:path';
 import { Rule, SchematicContext, Tree } from '@angular-devkit/schematics';
 import { formatDiagnostics } from '../../lib/diagnostics/formatter';
-import { componentClassName } from '../../lib/naming';
 import { parseQmlWithDiagnostics } from '../../lib/qml/parser';
 import { qmlToUiDocument } from '../../lib/converter/qml-to-ui';
 import { renderAngularMaterial } from '../../lib/angular/material-renderer';
+import {
+  planComponentOutput,
+  qmlSourceDirectory,
+  resolveWorkspaceDestinationLayout,
+  updateBarrelFile,
+  updateRouteFile
+} from '../workspace-generation';
 
 interface Options {
   name: string;
   qmlFile: string;
   path?: string;
+  project?: string;
+  feature?: string;
+  updateBarrel?: boolean;
+  routeMode?: 'none' | 'project' | 'feature';
 }
 
 export function qmlComponentSchematic(options: Options): Rule {
-  return (_tree: Tree, context: SchematicContext) => {
+  return (tree: Tree, context: SchematicContext) => {
     const qmlSource = fs.readFileSync(options.qmlFile, 'utf-8');
+    const layout = resolveWorkspaceDestinationLayout(tree, options);
+    const componentPlan = planComponentOutput(layout, options.name);
     const parseResult = parseQmlWithDiagnostics(qmlSource, {
       filePath: options.qmlFile,
-      searchRoots: [path.dirname(options.qmlFile)]
+      searchRoots: [qmlSourceDirectory(options.qmlFile)]
     });
     const converted = qmlToUiDocument(options.name, parseResult.document, options.qmlFile);
     const document = {
       ...converted,
       diagnostics: [...parseResult.diagnostics, ...converted.diagnostics]
     };
-    const className = componentClassName(options.name);
-    const rendered = renderAngularMaterial(document, className);
+    const rendered = renderAngularMaterial(document, componentPlan.className);
 
-    const outputDir = options.path ?? `src/app/${options.name}`;
-    const outTree = _tree;
+    tree.create(componentPlan.tsPath, rendered.ts);
+    tree.create(componentPlan.htmlPath, rendered.html);
+    tree.create(componentPlan.scssPath, rendered.scss);
 
-    outTree.create(path.posix.join(outputDir, `${options.name}.component.ts`), rendered.ts);
-    outTree.create(path.posix.join(outputDir, `${options.name}.component.html`), rendered.html);
-    outTree.create(path.posix.join(outputDir, `${options.name}.component.scss`), rendered.scss);
+    updateBarrelFile(tree, [componentPlan]);
+    updateRouteFile(tree, [componentPlan]);
 
     if (document.diagnostics.length) {
       context.logger.warn(formatDiagnostics(document.diagnostics).join('\n'));
     }
 
-    return outTree;
+    context.logger.info(`Generated: ${componentPlan.componentDirectory}`);
+
+    return tree;
   };
 }
