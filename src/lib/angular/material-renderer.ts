@@ -23,7 +23,7 @@ interface RenderContext {
   exprCounter: number;
 }
 
-const ALLOWED_HANDLER_CALLEE_PREFIX = 'Math.';
+const ALLOWED_HANDLER_CALLEE_PREFIXES = ['Math.'];
 const IDENTIFIER_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 function bindingLiteralOrExpr(binding: UiBinding | undefined, fieldPrefix: string, ctx: RenderContext): string {
@@ -56,6 +56,10 @@ function escapeTemplateEventExpression(expression: string): string {
 
 function normalizeWhitespaceForComment(handler: string): string {
   return handler.replace(/\s+/g, ' ').trim();
+}
+
+function isAllowedHandlerCallee(callee: string): boolean {
+  return ALLOWED_HANDLER_CALLEE_PREFIXES.some(prefix => callee.startsWith(prefix));
 }
 
 function generateComponentMethodExpression(ast: ExpressionNode, declaredSignalNames: Set<string>): string {
@@ -100,9 +104,9 @@ function renderAssignmentMethod(event: UiEvent, ctx: RenderContext): string {
     const result = parser.parse(model.value);
     if (result.ast && result.errors.length === 0) {
       const dependencyInfo = extractDependencies(result.ast);
-      const usesUnknownIdentifiers = [...dependencyInfo.identifiers].some(identifier => !ctx.declaredSignalNames.has(identifier));
-      const usesUnsupportedCallee = [...dependencyInfo.callees].some(callee => !callee.startsWith(ALLOWED_HANDLER_CALLEE_PREFIX));
-      if (!usesUnknownIdentifiers && !usesUnsupportedCallee) {
+      const hasUnverifiedIdentifiers = [...dependencyInfo.identifiers].some(identifier => !ctx.declaredSignalNames.has(identifier));
+      const usesUnsupportedCallee = [...dependencyInfo.callees].some(callee => !isAllowedHandlerCallee(callee));
+      if (!hasUnverifiedIdentifiers && !usesUnsupportedCallee) {
         const valueExpression = generateComponentMethodExpression(result.ast, ctx.declaredSignalNames);
         return [
           `  ${event.generatedMethod.name}(): void {`,

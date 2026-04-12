@@ -64,7 +64,7 @@ function assertNotContains(text, snippet, label) {
   }
 }
 
-function diagnosticsText(document) {
+function formatDiagnostics(document) {
   const text = (document.diagnostics ?? [])
     .map(diagnostic => `${diagnostic.severity}:${diagnostic.code ?? 'NO_CODE'}:${diagnostic.message}`)
     .join('\n');
@@ -223,7 +223,7 @@ function validateLayoutSamples(mods) {
 
 function validateRenderedCase(mods, testCase) {
   const { document, rendered } = convertAndRenderCase(mods, testCase);
-  const renderedDiagnostics = diagnosticsText(document);
+  const renderedDiagnostics = formatDiagnostics(document);
 
   if (testCase.expectContainer ?? true) {
     assertContains(rendered.html, `<div class="`, `${testCase.label} HTML`);
