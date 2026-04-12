@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/schema",
-  "id": "QmlBatchSchema",
+  "$id": "QmlBatchSchema",
   "title": "QML Batch Component Generator Options",
   "type": "object",
   "properties": {
@@ -10,12 +10,32 @@
     },
     "path": {
       "type": "string",
-      "description": "Destination path for generated components"
+      "description": "Legacy destination path override for generated components maintained for backward compatibility",
+      "deprecated": true
     },
     "recursive": {
       "type": "boolean",
       "description": "Recursively process subdirectories",
       "default": true
+    },
+    "project": {
+      "type": "string",
+      "description": "Angular workspace project to generate into"
+    },
+    "feature": {
+      "type": "string",
+      "description": "Feature folder under the target project's app root"
+    },
+    "updateBarrel": {
+      "type": "boolean",
+      "description": "Update the feature barrel file with generated component exports",
+      "default": false
+    },
+    "routeMode": {
+      "type": "string",
+      "description": "Route insertion strategy for standalone component generation",
+      "enum": ["none", "project", "feature"],
+      "default": "none"
     }
   },
   "required": ["qmlDir"]

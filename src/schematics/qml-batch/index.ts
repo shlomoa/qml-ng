@@ -4,26 +4,25 @@ import { Rule, SchematicContext, Tree } from '@angular-devkit/schematics';
 import { parseQml } from '../../lib/qml/parser';
 import { qmlToUiDocument } from '../../lib/converter/qml-to-ui';
 import { renderAngularMaterial } from '../../lib/angular/material-renderer';
+import {
+  planComponentOutput,
+  qmlComponentName,
+  qmlRelativeDirectory,
+  qmlSourceDirectory,
+  resolveWorkspaceDestinationLayout,
+  WorkspaceComponentPlan,
+  updateBarrelFile,
+  updateRouteFile
+} from '../workspace-generation';
 
 interface Options {
   qmlDir: string;
   path?: string;
   recursive?: boolean;
-}
-
-function pascalCase(name: string): string {
-  return name
-    .split(/[^A-Za-z0-9]+/)
-    .filter(Boolean)
-    .map(part => part[0].toUpperCase() + part.slice(1))
-    .join('');
-}
-
-function dasherize(name: string): string {
-  return name
-    .replace(/([A-Z])/g, '-$1')
-    .toLowerCase()
-    .replace(/^-/, '');
+  project?: string;
+  feature?: string;
+  updateBarrel?: boolean;
+  routeMode?: 'none' | 'project' | 'feature';
 }
 
 function collectQmlFiles(dir: string, recursive: boolean): string[] {
@@ -46,6 +45,7 @@ function collectQmlFiles(dir: string, recursive: boolean): string[] {
 export function qmlBatchSchematic(options: Options): Rule {
   return (tree: Tree, context: SchematicContext) => {
     const qmlDir = path.resolve(options.qmlDir);
+    const layout = resolveWorkspaceDestinationLayout(tree, options);
 
     if (!fs.existsSync(qmlDir) || !fs.statSync(qmlDir).isDirectory()) {
       throw new Error(`Directory not found: ${qmlDir}`);
@@ -58,44 +58,44 @@ export function qmlBatchSchematic(options: Options): Rule {
 
     let successCount = 0;
     let errorCount = 0;
+    const generatedPlans: WorkspaceComponentPlan[] = [];
 
     for (const qmlFile of qmlFiles) {
       try {
         const qmlSource = fs.readFileSync(qmlFile, 'utf-8');
-        const relativePath = path.relative(qmlDir, qmlFile);
-        const baseName = path.basename(qmlFile, path.extname(qmlFile));
-        const componentName = baseName.replace(/\.ui$/, '');
+        const componentName = qmlComponentName(qmlFile);
+        const componentPlan = planComponentOutput(
+          layout,
+          componentName,
+          qmlRelativeDirectory(qmlDir, qmlFile)
+        );
 
         const document = qmlToUiDocument(componentName, parseQml(qmlSource, {
           filePath: qmlFile,
-          searchRoots: [path.dirname(qmlFile), qmlDir]
+          searchRoots: [qmlSourceDirectory(qmlFile), qmlDir]
         }));
 
-        const className = `${pascalCase(componentName)}Component`;
-        const rendered = renderAngularMaterial(document, className);
+        const rendered = renderAngularMaterial(document, componentPlan.className);
 
-        // Preserve directory structure relative to qmlDir
-        const relativeDir = path.dirname(relativePath);
-        const outputBase = options.path ?? 'src/app';
-        const outputDir = relativeDir
-          ? path.posix.join(outputBase, relativeDir, dasherize(componentName))
-          : path.posix.join(outputBase, dasherize(componentName));
-
-        tree.create(path.posix.join(outputDir, `${dasherize(componentName)}.component.ts`), rendered.ts);
-        tree.create(path.posix.join(outputDir, `${dasherize(componentName)}.component.html`), rendered.html);
-        tree.create(path.posix.join(outputDir, `${dasherize(componentName)}.component.scss`), rendered.scss);
+        tree.create(componentPlan.tsPath, rendered.ts);
+        tree.create(componentPlan.htmlPath, rendered.html);
+        tree.create(componentPlan.scssPath, rendered.scss);
 
         if (document.diagnostics.length) {
           context.logger.warn(`${qmlFile}:\n${document.diagnostics.join('\n')}`);
         }
 
+        generatedPlans.push(componentPlan);
         successCount++;
-        context.logger.info(`Generated: ${outputDir}`);
+        context.logger.info(`Generated: ${componentPlan.componentDirectory}`);
       } catch (error) {
         errorCount++;
         context.logger.error(`Failed to process ${qmlFile}: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
+
+    updateBarrelFile(tree, generatedPlans);
+    updateRouteFile(tree, generatedPlans);
 
     context.logger.info(`Completed: ${successCount} succeeded, ${errorCount} failed`);
     return tree;
