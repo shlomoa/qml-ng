@@ -58,6 +58,10 @@ function normalizeWhitespaceForComment(handler: string): string {
   return handler.replace(/\s+/g, ' ').trim();
 }
 
+function normalizeCommentText(text: string): string {
+  return text.replace(/--/g, '—').trim();
+}
+
 function isAllowedHandlerCallee(callee: string): boolean {
   return ALLOWED_HANDLER_CALLEE_PREFIXES.some(prefix => callee.startsWith(prefix));
 }
@@ -215,11 +219,16 @@ function renderNode(node: UiNode, ctx: RenderContext): string {
     }
 
     case 'animation':
-      return '';
+      return node.name
+        ? `<!-- qml-ng approximation: ignored ${normalizeCommentText(node.name)} node. -->`
+        : '';
 
     case 'unknown':
     default:
-      return `<div class="qml-unsupported">Unsupported node: ${node.name ?? 'unknown'}</div>`;
+      return [
+        `<!-- qml-ng approximation: unsupported QML type '${normalizeCommentText(node.name ?? 'unknown')}' rendered as a placeholder. -->`,
+        `<div class="qml-unsupported">Unsupported node: ${node.name ?? 'unknown'}</div>`
+      ].join('\n');
   }
 }
 
@@ -305,7 +314,7 @@ export function renderAngularMaterial(doc: UiDocument, className: string): Rende
     'Component',
     ...(needsComputed ? ['computed'] : []),
     ...(needsSignal ? ['signal'] : [])
-  ];
+  ].sort((left, right) => left.localeCompare(right));
 
   const angularMaterialImportMap: Record<string, string> = {
     MatButtonModule: '@angular/material/button',

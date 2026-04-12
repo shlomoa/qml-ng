@@ -20,13 +20,9 @@ export class LayoutLoweringPass implements LoweringPass {
     // but this pass can enrich or validate it
     const processedLayout = this.ensureProperLayout(node.layout);
 
-    // Recursively process children
-    const processedChildren = node.children.map(child => this.transform(child, context));
-
     return {
       ...node,
-      layout: processedLayout,
-      children: processedChildren
+      layout: processedLayout
     };
   }
 

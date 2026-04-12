@@ -18,6 +18,7 @@ import { LoweringPass, PassContext } from './pass-interface';
 export class HandlerLoweringPass implements LoweringPass {
   readonly name = 'handler-lowering';
   private generatedMethodCounter = 0;
+  private readonly usedMethodNames = new Set<string>();
 
   private static readonly QML_TO_ANGULAR_EVENT: Record<string, string> = {
     onClicked: 'click',
@@ -31,13 +32,9 @@ export class HandlerLoweringPass implements LoweringPass {
     // Process current node's events
     const processedEvents = node.events.map(event => this.processEvent(event, context));
 
-    // Recursively process children
-    const processedChildren = node.children.map(child => this.transform(child, context));
-
     return {
       ...node,
-      events: processedEvents,
-      children: processedChildren
+      events: processedEvents
     };
   }
 
@@ -94,7 +91,7 @@ export class HandlerLoweringPass implements LoweringPass {
     const assignment = this.parseAssignment(handler);
     if (assignment) {
       const generatedMethod = {
-        name: this.createGeneratedMethodName(angularEvent)
+        name: this.createGeneratedMethodName(angularEvent, event)
       };
       context.diagnostics.push(
         createDiagnostic(
@@ -137,10 +134,29 @@ export class HandlerLoweringPass implements LoweringPass {
     };
   }
 
-  private createGeneratedMethodName(angularEvent: string): string {
+  private createGeneratedMethodName(angularEvent: string, event: UiEvent): string {
     const normalized = angularEvent.replace(/[^A-Za-z0-9]+(.)/g, (_, char: string) => char.toUpperCase());
     const capitalized = normalized.charAt(0).toUpperCase() + normalized.slice(1);
-    return `handle${capitalized}${++this.generatedMethodCounter}`;
+    const position = event.location?.start;
+    const locationSuffix = position
+      ? `L${position.line}C${position.column}`
+      : `${++this.generatedMethodCounter}`;
+    const baseName = `handle${capitalized}${locationSuffix}`;
+
+    if (!this.usedMethodNames.has(baseName)) {
+      this.usedMethodNames.add(baseName);
+      return baseName;
+    }
+
+    let duplicateCounter = 2;
+    let candidate = `${baseName}_${duplicateCounter}`;
+    while (this.usedMethodNames.has(candidate)) {
+      duplicateCounter += 1;
+      candidate = `${baseName}_${duplicateCounter}`;
+    }
+
+    this.usedMethodNames.add(candidate);
+    return candidate;
   }
 
   private isCallExpression(handler: string): boolean {

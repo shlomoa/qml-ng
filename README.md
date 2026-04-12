@@ -80,9 +80,12 @@ The new example corpus shows the next wave of features the project will need to 
 
 ```bash
 node dist/cli.js examples/login.qml --name login-card
+node dist/cli.js examples/WebinarDemo --output-dir /tmp/qml-ng-out --dry-run --verbose
+node dist/cli.js examples/WebinarDemo --output-dir /tmp/qml-ng-out --diff
+node dist/cli.js examples/WebinarDemo --output-dir /tmp/qml-ng-out --strict
 ```
 
-This prints generated component files to stdout for the small supported subset. The larger example folders are better treated as regression fixtures and roadmap inputs than as current smoke tests.
+For a single file, the CLI still prints generated component files to stdout by default. When you pass `--output-dir`, it writes deterministic `*.component.{ts,html,scss}` files under that directory. Directory inputs are treated as batch conversions and report per-file plus aggregate diagnostics, with `--dry-run`, `--diff`, and `--strict` all supported for larger bundles.
 
 For day-to-day validation:
 

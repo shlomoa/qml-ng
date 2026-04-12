@@ -1,7 +1,9 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { Rule, SchematicContext, Tree } from '@angular-devkit/schematics';
-import { parseQml } from '../../lib/qml/parser';
+import { formatDiagnostics } from '../../lib/diagnostics/formatter';
+import { componentClassName } from '../../lib/naming';
+import { parseQmlWithDiagnostics } from '../../lib/qml/parser';
 import { qmlToUiDocument } from '../../lib/converter/qml-to-ui';
 import { renderAngularMaterial } from '../../lib/angular/material-renderer';
 
@@ -11,19 +13,19 @@ interface Options {
   path?: string;
 }
 
-function pascalCase(name: string): string {
-  return name
-    .split(/[^A-Za-z0-9]+/)
-    .filter(Boolean)
-    .map(part => part[0].toUpperCase() + part.slice(1))
-    .join('');
-}
-
 export function qmlComponentSchematic(options: Options): Rule {
   return (_tree: Tree, context: SchematicContext) => {
     const qmlSource = fs.readFileSync(options.qmlFile, 'utf-8');
-    const document = qmlToUiDocument(options.name, parseQml(qmlSource));
-    const className = `${pascalCase(options.name)}Component`;
+    const parseResult = parseQmlWithDiagnostics(qmlSource, {
+      filePath: options.qmlFile,
+      searchRoots: [path.dirname(options.qmlFile)]
+    });
+    const converted = qmlToUiDocument(options.name, parseResult.document, options.qmlFile);
+    const document = {
+      ...converted,
+      diagnostics: [...parseResult.diagnostics, ...converted.diagnostics]
+    };
+    const className = componentClassName(options.name);
     const rendered = renderAngularMaterial(document, className);
 
     const outputDir = options.path ?? `src/app/${options.name}`;
@@ -34,7 +36,7 @@ export function qmlComponentSchematic(options: Options): Rule {
     outTree.create(path.posix.join(outputDir, `${options.name}.component.scss`), rendered.scss);
 
     if (document.diagnostics.length) {
-      context.logger.warn(document.diagnostics.join('\n'));
+      context.logger.warn(formatDiagnostics(document.diagnostics).join('\n'));
     }
 
     return outTree;
