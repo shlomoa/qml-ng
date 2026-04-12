@@ -130,7 +130,17 @@ export function formatDiagnostic(diagnostic: UiDiagnostic): string {
     ? `${diagnostic.location.start.line}:${diagnostic.location.start.column}`
     : undefined;
   const code = diagnostic.code ? `:${diagnostic.code}` : '';
-  const file = diagnostic.file ?? '';
-  const filePrefix = file || formattedLocation ? `${file}${file && formattedLocation ? ':' : ''}${formattedLocation ?? ''}: ` : '';
+  const filePrefix = formatDiagnosticPrefix(diagnostic.file, formattedLocation);
   return `${diagnostic.severity}${code}: ${filePrefix}${diagnostic.message}`;
+}
+
+function formatDiagnosticPrefix(file: string | undefined, formattedLocation: string | undefined): string {
+  if (!file && !formattedLocation) {
+    return '';
+  }
+
+  const filePart = file ?? '';
+  const separator = file && formattedLocation ? ':' : '';
+  const locationPart = formattedLocation ?? '';
+  return `${filePart}${separator}${locationPart}: `;
 }

@@ -86,7 +86,7 @@ export class LayoutLoweringPass implements LoweringPass {
     }
 
     if (isFlowLayoutContainer(parent) && hasAbsolutePositioning(layout)) {
-      const parentLabel = parent?.meta?.layoutKind ?? parent?.meta?.orientation ?? parent?.name ?? parent?.kind ?? 'unknown';
+      const parentLabel = this.describeParentContainer(parent);
       context.diagnostics.push(
         createDiagnostic(
           'warning',
@@ -105,5 +105,11 @@ export class LayoutLoweringPass implements LoweringPass {
       return undefined;
     }
     return layout;
+  }
+
+  private describeParentContainer(parent: UiNode | undefined): string {
+    const layoutKind = typeof parent?.meta?.layoutKind === 'string' ? parent.meta.layoutKind : undefined;
+    const orientation = typeof parent?.meta?.orientation === 'string' ? parent.meta.orientation : undefined;
+    return layoutKind ?? orientation ?? parent?.name ?? parent?.kind ?? 'unknown';
   }
 }

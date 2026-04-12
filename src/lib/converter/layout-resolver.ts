@@ -100,14 +100,30 @@ function addAnchorRule(layout: UiLayout, rules: UiLayoutRule[], source: string, 
     return;
   }
 
-  const expectedTarget = `parent.${source.split('.').pop()}`;
-  if (target === expectedTarget) {
+  const anchorDirection = anchorDirectionFromSource(source);
+  const expectedTarget = anchorDirection ? `parent.${anchorDirection}` : undefined;
+  if (expectedTarget && target === expectedTarget) {
     layout[targetField] = true;
-    pushRule(rules, source, 'approximate', `Mapped to CSS ${source.split('.').pop()}: 0 within the parent container.`);
+    pushRule(rules, source, 'approximate', `Mapped to CSS ${anchorDirection}: 0 within the parent container.`);
     return;
   }
 
   pushRule(rules, source, 'unsupported', `Only parent edge alignment is supported; found '${target}'.`);
+}
+
+function anchorDirectionFromSource(source: string): 'left' | 'right' | 'top' | 'bottom' | undefined {
+  switch (source) {
+    case 'anchors.left':
+      return 'left';
+    case 'anchors.right':
+      return 'right';
+    case 'anchors.top':
+      return 'top';
+    case 'anchors.bottom':
+      return 'bottom';
+    default:
+      return undefined;
+  }
 }
 
 function addSizeRule(
