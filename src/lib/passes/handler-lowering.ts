@@ -138,7 +138,7 @@ export class HandlerLoweringPass implements LoweringPass {
   }
 
   private createGeneratedMethodName(angularEvent: string): string {
-    const normalized = angularEvent.replace(/[^A-Za-z0-9]+(.)/g, (_, char: string) => char.toUpperCase());
+    const normalized = angularEvent.replace(/[^A-Za-z0-9]+(.)/g, (_match, char: string) => char.toUpperCase());
     const capitalized = normalized.charAt(0).toUpperCase() + normalized.slice(1);
     return `handle${capitalized}${++this.generatedMethodCounter}`;
   }

@@ -24,6 +24,7 @@ interface RenderContext {
 }
 
 const ALLOWED_HANDLER_CALLEE_PREFIXES = ['Math.'];
+const IDENTIFIER_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 function bindingLiteralOrExpr(binding: UiBinding | undefined, fieldPrefix: string, ctx: RenderContext): string {
   if (!binding) return "''";
@@ -53,7 +54,7 @@ function escapeTemplateEventExpression(expression: string): string {
     .replace(/>/g, '&gt;');
 }
 
-function normalizeHandlerForComment(handler: string): string {
+function normalizeWhitespaceForComment(handler: string): string {
   return handler.replace(/\s+/g, ' ').trim();
 }
 
@@ -93,7 +94,7 @@ function renderAssignmentMethod(event: UiEvent, ctx: RenderContext): string {
     return '';
   }
 
-  const targetIsSignal = /^[A-Za-z_][A-Za-z0-9_]*$/.test(model.target) && ctx.declaredSignalNames.has(model.target);
+  const targetIsSignal = IDENTIFIER_PATTERN.test(model.target) && ctx.declaredSignalNames.has(model.target);
   if (targetIsSignal) {
     const parser = new ExpressionParser();
     const result = parser.parse(model.value);
@@ -116,7 +117,7 @@ function renderAssignmentMethod(event: UiEvent, ctx: RenderContext): string {
 
   return [
     `  ${event.generatedMethod.name}(): void {`,
-    `    // TODO(qml-ng): Translate QML handler: ${normalizeHandlerForComment(event.handler)}`,
+    `    // TODO(qml-ng): Translate QML handler: ${normalizeWhitespaceForComment(event.handler)}`,
     '  }'
   ].join('\n');
 }
