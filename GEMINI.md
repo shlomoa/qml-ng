@@ -1,28 +1,41 @@
 # Gemini Project Context
 
-This repository is a TypeScript generator that converts a limited QML subset into Angular standalone components with Angular Material.
+Use `AGENTS.md` as the main source of truth for repository status, scope, workflow, and requirements.
 
-## Core Pipeline
+## Repo Snapshot
 
-1. Parse QML with `src/lib/qml/qml-parser.ts`.
-2. Normalize to `UiDocument` in `src/lib/schema/ui-schema.ts` through `src/lib/converter/qml-to-schema.ts`.
-3. Render Angular Material HTML and SCSS in `src/lib/angular/material-renderer.ts`.
-4. Expose the pipeline through `src/lib/converter/converter.ts`, `src/cli.ts`, and `src/schematics/qml-component/index.ts`.
+- This repo converts a conservative QML subset into Angular standalone components with Angular Material.
+- The current flow is:
+  1. tokenize and parse QML
+  2. lower into `UiDocument` through semantic passes
+  3. render Angular HTML / SCSS / TypeScript
+  4. expose the result through the CLI and Angular schematics
+- Current schematic surface:
+  - `qml-component`
+  - `qml-batch`
+  - `qml-feature`
+  - `update-routes`
+  - `migrate-generated`
+  - `validate-generated`
 
 ## Working Rules
 
-- Prefer schema-first changes instead of embedding one-off HTML in the schematic layer.
-- Keep parser support explicit and conservative. Unsupported QML should surface as diagnostics or unsupported placeholders.
-- Preserve deterministic generated output, including stable imports and escaped markup.
-- If you add a new node kind, update schema types, the QML mapper, the renderer, and any Angular template imports that need to stay consistent.
+- Prefer shared converter, pass, renderer, batch, and schematic helpers over one-off logic.
+- Keep parser support conservative and diagnostic-first.
+- Keep CLI, schematics, and docs aligned when commands, options, output layout, or diagnostic formatting change.
+- Update `src/docs/conversion-coverage.md` when node coverage meaningfully changes.
 
 ## Verification
 
-- Run `npm install` first if dependencies are not present.
-- Run `npm run build`.
-- Smoke-test with `node dist/cli.js examples/login.qml login-form`.
+```bash
+npm install
+npm run build
+npm run validate
+node dist/cli.js examples/login.qml --name login-form
+```
 
-## Current Limits
+## Scope Reminder
 
-- Supported starter controls are `Column`, `Row`, `Text`, `TextField`, and `Button`.
-- `npm test` is currently a placeholder, not a real automated test suite.
+- Direct rendered controls currently include `Text`, `TextField`, `Button`, and `Image`.
+- Container/layout mappings currently include `Window`, `QtObject`, `Component`, `Item`, `Rectangle`, `Column`, `Row`, `ColumnLayout`, `RowLayout`, `StackLayout`, `GridLayout`, `FlexboxLayout`, `ScrollView`, and `ShapePath`.
+- Advanced states, effects, model/view controls, and many interaction primitives remain unsupported or diagnostic-first.
