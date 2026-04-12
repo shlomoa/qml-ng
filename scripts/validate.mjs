@@ -228,7 +228,18 @@ function validateRendererContract(mods) {
   const document = mods.qmlToUiDocument(
     'renderer-contract-sample',
     mods.parseQml(
-      `Window {\n  property int currentIndex: 0\n  Column {\n    Image { source: "assets/logo.png" }\n    Button {\n      text: "Open"\n      onClicked: currentIndex = 1\n    }\n  }\n}`
+      `Window {
+  property int currentIndex: 0
+
+  Column {
+    Image { source: "assets/logo.png" }
+
+    Button {
+      text: "Open"
+      onClicked: currentIndex = 1
+    }
+  }
+}`
     )
   );
   const renderer = new mods.AngularMaterialRenderer();

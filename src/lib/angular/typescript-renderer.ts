@@ -107,7 +107,7 @@ export class AngularTypeScriptRenderer implements TypeScriptRenderer {
   }
 
   render(doc: UiDocument, className: string, context: RenderContext, stateDeclarations: UiStateDeclaration[]): string {
-    const typedSignalLines = [...stateDeclarations]
+    const typedSignalLines = stateDeclarations
       .sort((a, b) => a.name.localeCompare(b.name))
       .map(stateDeclarationToTs);
 

@@ -7,11 +7,17 @@ export interface RenderedAngularComponent {
 }
 
 export interface RenderContext {
+  /** Computed class members discovered while rendering HTML bindings. */
   computedDeclarations: string[];
+  /** Expression dependencies that may need fallback signal declarations in TypeScript. */
   dependencyNames: Set<string>;
+  /** Typed QML properties already promoted to Angular signals. */
   declaredSignalNames: Set<string>;
+  /** Event handlers that require generated component methods, in first-seen order. */
   requiredGeneratedMethods: UiEvent[];
+  /** De-duplication set paired with requiredGeneratedMethods. */
   requiredGeneratedMethodNames: Set<string>;
+  /** Monotonic counter used to create deterministic computed field names. */
   exprCounter: number;
 }
 
