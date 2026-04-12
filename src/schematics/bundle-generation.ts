@@ -53,7 +53,9 @@ function readQmlProjectEntries(projectFile: string): { mainFile: string; mainUiF
   const mainUiFile = source.match(/^\s*mainUiFile:\s*"([^"]+)"/m)?.[1];
 
   if (!mainFile || !mainUiFile) {
-    throw new Error(`Could not read mainFile/mainUiFile from ${projectFile}`);
+    throw new Error(
+      `Could not read ${!mainFile && !mainUiFile ? 'mainFile or mainUiFile' : !mainFile ? 'mainFile' : 'mainUiFile'} from ${projectFile}`
+    );
   }
 
   return { mainFile, mainUiFile };
@@ -102,7 +104,15 @@ function resolveBundleSource(options: BundleGenerationOptions): BundleSource {
   };
 }
 
-function publicAssetPath(assetRoot: string, relativeAssetPath: string): string | undefined {
+/**
+ * Computes the browser-visible Angular asset path for a copied bundle asset.
+ *
+ * The schematic writes assets under the workspace `src/assets/...` tree, but generated
+ * templates must refer to runtime URLs relative to the application's public root. When the
+ * destination does not live under a `src/` segment, the schematic cannot infer a safe public
+ * URL and leaves a diagnostic instead of guessing.
+ */
+function computeRuntimeAssetPath(assetRoot: string, relativeAssetPath: string): string | undefined {
   const normalizedRoot = assetRoot.replace(/\\/g, '/');
   const sourceRootMarker = '/src/';
   const markerIndex = normalizedRoot.indexOf(sourceRootMarker);
@@ -115,6 +125,13 @@ function publicAssetPath(assetRoot: string, relativeAssetPath: string): string |
   return path.posix.join(publicRoot, ...relativeAssetPath.replace(/\\/g, '/').split('/').filter(Boolean));
 }
 
+/**
+ * Keeps only bundle-local asset references that the schematic can safely copy.
+ *
+ * Absolute paths, web URLs, `data:` URIs, and Qt `qrc:/` resource URLs are intentionally
+ * excluded because they are not project-local files that can be mirrored into Angular's
+ * workspace assets folder.
+ */
 function normalizeRelativeAssetReference(value: string): string | undefined {
   const normalized = value.trim().replace(/\\/g, '/');
 
@@ -175,7 +192,7 @@ function rewriteBundleAssetBindings(
             tree.create(destinationPath, assetContents);
           }
 
-          const runtimePath = publicAssetPath(assetRoot, relativeAssetPath);
+          const runtimePath = computeRuntimeAssetPath(assetRoot, relativeAssetPath);
 
           if (runtimePath) {
             node.source = {

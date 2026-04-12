@@ -34,8 +34,8 @@ export function validateGeneratedSchematic(options: Options): Rule {
       throw new Error(`Generated project validation failed:\n${errors.map(error => `- ${error}`).join('\n')}`);
     }
 
-    const validatedTarget = expectedPlans?.length ? String(expectedPlans.length) : 'existing';
-    context.logger.info(`Validated ${validatedTarget} generated component(s)`);
+    const validationScope = expectedPlans?.length ? String(expectedPlans.length) : 'existing';
+    context.logger.info(`Validated ${validationScope} generated component(s)`);
     return tree;
   };
 }
