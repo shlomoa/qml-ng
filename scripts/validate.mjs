@@ -106,13 +106,15 @@ async function loadBuiltModules() {
   const converter = await import(pathToFileURL(path.join(repoRoot, 'dist', 'lib', 'converter', 'qml-to-ui.js')).href);
   const renderer = await import(pathToFileURL(path.join(repoRoot, 'dist', 'lib', 'angular', 'material-renderer.js')).href);
   const rendererContract = await import(pathToFileURL(path.join(repoRoot, 'dist', 'lib', 'angular', 'renderer-contract.js')).href);
+  const nodeRegistry = await import(pathToFileURL(path.join(repoRoot, 'dist', 'lib', 'angular', 'node-render-registry.js')).href);
   return {
     parseQml: parser.parseQml,
     collectResolvedQmlDependencies: resolver.collectResolvedQmlDependencies,
     qmlToUiDocument: converter.qmlToUiDocument,
     renderAngularMaterial: renderer.renderAngularMaterial,
     AngularMaterialRenderer: renderer.AngularMaterialRenderer,
-    createRenderContext: rendererContract.createRenderContext
+    createRenderContext: rendererContract.createRenderContext,
+    getUiNodeRenderRule: nodeRegistry.getUiNodeRenderRule
   };
 }
 
@@ -233,6 +235,7 @@ function validateRendererContract(mods) {
 
   Column {
     Image { source: "assets/logo.png" }
+    TextField { placeholderText: "Search" }
 
     Button {
       text: "Open"
@@ -252,12 +255,66 @@ function validateRendererContract(mods) {
   assertContains(html, 'class="qml-window"', 'renderer contract HTML');
   assertContains(html, 'class="qml-image"', 'renderer contract HTML');
   assertContains(html, `[src]='"assets/logo.png"'`, 'renderer contract HTML');
+  assertContains(html, '<mat-form-field appearance="outline">', 'renderer contract HTML');
   assertContains(html, '(click)="handleClick1()"', 'renderer contract HTML');
   assertContains(ts, 'standalone: true,', 'renderer contract TypeScript');
-  assertContains(ts, 'imports: [MatButtonModule],', 'renderer contract TypeScript');
+  assertContains(ts, 'imports: [MatButtonModule, MatFormFieldModule, MatInputModule],', 'renderer contract TypeScript');
   assertContains(ts, 'readonly currentIndex = signal<number>(0);', 'renderer contract TypeScript');
   assertContains(ts, 'handleClick1(): void {', 'renderer contract TypeScript');
   assertContains(scss, '.qml-window {', 'renderer contract SCSS');
+}
+
+function validateNodeRenderRegistry(mods) {
+  const makeNode = (kind, name, extra = {}) => ({
+    kind,
+    name,
+    events: [],
+    children: [],
+    ...extra
+  });
+
+  const buttonRule = mods.getUiNodeRenderRule(makeNode('button', 'Button'));
+  if (buttonRule.mappingCategory !== 'supported') {
+    throw new Error(`Expected button mapping to be supported, got ${buttonRule.mappingCategory}`);
+  }
+  if (buttonRule.rendererKind !== 'material') {
+    throw new Error(`Expected button mapping to use the material renderer, got ${buttonRule.rendererKind}`);
+  }
+  if (!buttonRule.materialImports.includes('MatButtonModule')) {
+    throw new Error('Expected button mapping to require MatButtonModule');
+  }
+
+  const inputRule = mods.getUiNodeRenderRule(makeNode('input', 'TextField'));
+  if (inputRule.mappingCategory !== 'approximated') {
+    throw new Error(`Expected input mapping to be approximated, got ${inputRule.mappingCategory}`);
+  }
+  if (!inputRule.materialImports.includes('MatFormFieldModule') || !inputRule.materialImports.includes('MatInputModule')) {
+    throw new Error('Expected input mapping to require MatFormFieldModule and MatInputModule');
+  }
+
+  const containerRule = mods.getUiNodeRenderRule(makeNode('container', 'Column', { meta: { orientation: 'column' } }));
+  if (containerRule.mappingCategory !== 'approximated') {
+    throw new Error(`Expected container mapping to be approximated, got ${containerRule.mappingCategory}`);
+  }
+  if (containerRule.rendererKind !== 'angular') {
+    throw new Error(`Expected container mapping to use the angular renderer, got ${containerRule.rendererKind}`);
+  }
+
+  const unknownRule = mods.getUiNodeRenderRule(makeNode('unknown', 'CheckBox'));
+  if (unknownRule.mappingCategory !== 'unsupported') {
+    throw new Error(`Expected unknown mapping to be unsupported, got ${unknownRule.mappingCategory}`);
+  }
+  if (unknownRule.rendererKind !== 'placeholder') {
+    throw new Error(`Expected unknown mapping to render a placeholder, got ${unknownRule.rendererKind}`);
+  }
+
+  const animationRule = mods.getUiNodeRenderRule(makeNode('animation', 'KeyframeGroup'));
+  if (animationRule.mappingCategory !== 'unsupported') {
+    throw new Error(`Expected animation mapping to be unsupported, got ${animationRule.mappingCategory}`);
+  }
+  if (animationRule.rendererKind !== 'none') {
+    throw new Error(`Expected animation mapping to skip markup, got ${animationRule.rendererKind}`);
+  }
 }
 
 function validateRenderedCase(mods, testCase) {
@@ -479,6 +536,8 @@ validateLayoutSamples(mods);
 
 console.log('Validating renderer contract...');
 validateRendererContract(mods);
+console.log('Validating node render registry...');
+validateNodeRenderRegistry(mods);
 
 for (const testCase of eventModelCases) {
   console.log(`Modeling ${testCase.label}...`);

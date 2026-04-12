@@ -1,21 +1,10 @@
 import { UiNode } from '../schema/ui-schema';
+import { collectComponentImportsFromRegistry } from './node-render-registry';
+
+export function collectComponentImports(node: UiNode): string[] {
+  return collectComponentImportsFromRegistry(node);
+}
 
 export function collectMaterialImports(node: UiNode): string[] {
-  const imports = new Set<string>();
-
-  function walk(current: UiNode): void {
-    switch (current.kind) {
-      case 'button':
-        imports.add('MatButtonModule');
-        break;
-      case 'input':
-        imports.add('MatFormFieldModule');
-        imports.add('MatInputModule');
-        break;
-    }
-    current.children.forEach(walk);
-  }
-
-  walk(node);
-  return [...imports].sort();
+  return collectComponentImports(node);
 }
