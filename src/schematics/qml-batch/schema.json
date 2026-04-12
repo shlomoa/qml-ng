@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/schema",
+  "id": "QmlBatchSchema",
+  "title": "QML Batch Component Generator Options",
+  "type": "object",
+  "properties": {
+    "qmlDir": {
+      "type": "string",
+      "description": "Path to directory containing QML files"
+    },
+    "path": {
+      "type": "string",
+      "description": "Destination path for generated components"
+    },
+    "recursive": {
+      "type": "boolean",
+      "description": "Recursively process subdirectories",
+      "default": true
+    }
+  },
+  "required": ["qmlDir"]
+}
