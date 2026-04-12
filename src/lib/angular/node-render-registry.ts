@@ -2,7 +2,9 @@ import { lowerBinding } from '../converter/expression-lowering';
 import { UiBinding, UiNode } from '../schema/ui-schema';
 import { DiagnosticsEmitter, RenderContext } from './renderer-contract';
 
-const SAFE_COMPUTED_EXPRESSION_PATTERN = /^[\w\s.$()[\]?:"',+\-*/%<>=!&|]+$/;
+const ANGULAR_SAFE_EXPRESSION_PATTERN = /^[\w\s.$()[\]?:"',+\-*/%<>=!&|]+$/;
+const UNSAFE_EXPRESSION_COMMENT =
+  '/* TODO(qml-ng): Unsupported binding expression contains characters outside the Angular expression allowlist (for example backticks, semicolons, or braces) and needs manual review. */';
 
 export type UiNodeMappingCategory = 'supported' | 'approximated' | 'unsupported';
 export type UiNodeRendererKind = 'angular' | 'material' | 'placeholder' | 'none';
@@ -36,13 +38,13 @@ export interface UiNodeRenderRule {
 }
 
 function sanitizeAngularComputedExpression(expression: string): { expression: string; comment?: string } {
-  if (SAFE_COMPUTED_EXPRESSION_PATTERN.test(expression)) {
+  if (ANGULAR_SAFE_EXPRESSION_PATTERN.test(expression)) {
     return { expression };
   }
 
   return {
     expression: 'undefined',
-    comment: '/* TODO(qml-ng): Unsupported binding expression contains characters outside the Angular expression allowlist (for example backticks, semicolons, or braces) and needs manual review. */'
+    comment: UNSAFE_EXPRESSION_COMMENT
   };
 }
 
