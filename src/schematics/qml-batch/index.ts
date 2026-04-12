@@ -10,6 +10,7 @@ import {
   qmlRelativeDirectory,
   qmlSourceDirectory,
   resolveWorkspaceDestinationLayout,
+  WorkspaceComponentPlan,
   updateBarrelFile,
   updateRouteFile
 } from '../workspace-generation';
@@ -57,7 +58,7 @@ export function qmlBatchSchematic(options: Options): Rule {
 
     let successCount = 0;
     let errorCount = 0;
-    const generatedPlans = [];
+    const generatedPlans: WorkspaceComponentPlan[] = [];
 
     for (const qmlFile of qmlFiles) {
       try {

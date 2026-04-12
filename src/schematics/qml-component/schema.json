@@ -14,7 +14,8 @@
     },
     "path": {
       "type": "string",
-      "description": "Legacy destination path override"
+      "description": "Legacy destination path override maintained for backward compatibility",
+      "deprecated": true
     },
     "project": {
       "type": "string",

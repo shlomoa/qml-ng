@@ -65,30 +65,35 @@ test('qml-component schematic writes into the workspace project and updates barr
   const runner = new SchematicTestRunner('qml-ng', collectionPath);
   const tree = createWorkspaceTree();
   const qmlFile = writeTempQmlFile('Column { Text { text: "Hello" } }');
+  const qmlDirectory = path.dirname(qmlFile);
 
   tree.create(
     '/projects/demo-app/src/app/app.routes.ts',
     `import { Routes } from '@angular/router';\n\nexport const routes: Routes = [\n];\n`
   );
 
-  const result = await runner.runSchematic('qml-component', {
-    name: 'login-form',
-    qmlFile,
-    project: 'demo-app',
-    feature: 'account',
-    updateBarrel: true,
-    routeMode: 'project'
-  }, tree);
+  try {
+    const result = await runner.runSchematic('qml-component', {
+      name: 'login-form',
+      qmlFile,
+      project: 'demo-app',
+      feature: 'account',
+      updateBarrel: true,
+      routeMode: 'project'
+    }, tree);
 
-  assert.ok(result.exists('/projects/demo-app/src/app/account/login-form/login-form.component.ts'));
-  assert.ok(result.exists('/projects/demo-app/src/app/account/login-form/login-form.component.html'));
-  assert.ok(result.exists('/projects/demo-app/src/app/account/login-form/login-form.component.scss'));
-  assert.match(
-    result.readText('/projects/demo-app/src/app/account/index.ts'),
-    /export \* from '\.\/login-form\/login-form\.component';/
-  );
-  assert.match(
-    result.readText('/projects/demo-app/src/app/app.routes.ts'),
-    /path: 'login-form', loadComponent: \(\) => import\('\.\/account\/login-form\/login-form\.component'\)/
-  );
+    assert.ok(result.exists('/projects/demo-app/src/app/account/login-form/login-form.component.ts'));
+    assert.ok(result.exists('/projects/demo-app/src/app/account/login-form/login-form.component.html'));
+    assert.ok(result.exists('/projects/demo-app/src/app/account/login-form/login-form.component.scss'));
+    assert.match(
+      result.readText('/projects/demo-app/src/app/account/index.ts'),
+      /export \* from '\.\/login-form\/login-form\.component';/
+    );
+    assert.match(
+      result.readText('/projects/demo-app/src/app/app.routes.ts'),
+      /path: 'login-form', loadComponent: \(\) => import\('\.\/account\/login-form\/login-form\.component'\)/
+    );
+  } finally {
+    fs.rmSync(qmlDirectory, { recursive: true, force: true });
+  }
 });

@@ -148,10 +148,14 @@ function modulePath(fromDirectory: string[], toFileWithoutExtension: string[]): 
   return relative[0].startsWith('.') ? joined : `./${joined}`;
 }
 
-function escapeTypeScriptString(value: string): string {
+function escapeSingleQuotedString(value: string): string {
   return value
     .replace(/\\/g, '\\\\')
     .replace(/'/g, "\\'");
+}
+
+function buildRouteDeclaration(routePath: string, importPath: string, className: string): string {
+  return `{ path: '${escapeSingleQuotedString(routePath)}', loadComponent: () => import('${escapeSingleQuotedString(importPath)}').then(m => m.${className}) }`;
 }
 
 export function defaultComponentName(name: string): string {
@@ -248,7 +252,7 @@ export function planComponentOutput(
     routeFilePath: routeFileSegments ? toTreePath(routeFileSegments) : undefined,
     routeImportPath,
     routeDeclaration: routeDirectory && routeImportPath
-      ? `{ path: '${escapeTypeScriptString(routePath)}', loadComponent: () => import('${escapeTypeScriptString(routeImportPath)}').then(m => m.${componentClassName(normalizedComponentName)}) }`
+      ? buildRouteDeclaration(routePath, routeImportPath, componentClassName(normalizedComponentName))
       : undefined
   };
 }

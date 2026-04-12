@@ -10,7 +10,8 @@
     },
     "path": {
       "type": "string",
-      "description": "Legacy destination path override for generated components"
+      "description": "Legacy destination path override for generated components maintained for backward compatibility",
+      "deprecated": true
     },
     "recursive": {
       "type": "boolean",
