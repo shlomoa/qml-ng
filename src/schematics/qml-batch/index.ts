@@ -4,6 +4,7 @@ import { Rule, SchematicContext, Tree } from '@angular-devkit/schematics';
 import { parseQml } from '../../lib/qml/parser';
 import { qmlToUiDocument } from '../../lib/converter/qml-to-ui';
 import { renderAngularMaterial } from '../../lib/angular/material-renderer';
+import { formatDiagnostic } from '../../lib/schema/ui-schema';
 import {
   planComponentOutput,
   qmlComponentName,
@@ -82,7 +83,7 @@ export function qmlBatchSchematic(options: Options): Rule {
         tree.create(componentPlan.scssPath, rendered.scss);
 
         if (document.diagnostics.length) {
-          context.logger.warn(`${qmlFile}:\n${document.diagnostics.join('\n')}`);
+          context.logger.warn(`${qmlFile}:\n${document.diagnostics.map(formatDiagnostic).join('\n')}`);
         }
 
         generatedPlans.push(componentPlan);
