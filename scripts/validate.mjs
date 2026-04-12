@@ -467,7 +467,41 @@ const renderedCases = [
     className: 'WebinarMainAppComponent',
     htmlContains: ['class="qml-stack-layout"', 'class="qml-image"'],
     htmlNotContains: ['Unsupported node: StackLayout', 'Unsupported node: Image'],
+    diagnosticsContains: ['QTQUICK_LAYOUTS_APPROXIMATE'],
     diagnosticsNotContains: ['Unsupported QML type: StackLayout', 'Unsupported QML type: Image']
+  },
+  {
+    label: 'login sample emits centered layout intent and CSS positioning',
+    filePath: path.join(repoRoot, 'examples', 'login.qml'),
+    componentName: 'login-sample',
+    className: 'LoginSampleComponent',
+    htmlContains: ['class="qml-column"'],
+    diagnosticsContains: ['anchors.centerIn']
+  },
+  {
+    label: 'figma panel fixture preserves fixed composition geometry',
+    filePath: path.join(repoRoot, 'examples', 'FigmaVariants', 'FigmaVariantsContent', 'PanelLabel.ui.qml'),
+    componentName: 'figma-panel-label',
+    className: 'FigmaPanelLabelComponent',
+    htmlContains: [
+      '<span style="position: absolute; left: 49px; top: 10px; width: 215px; height: 12px;"'
+    ],
+    diagnosticsContains: ['x: Mapped to CSS left', 'y: Mapped to CSS top']
+  },
+  {
+    label: 'webinar stack layout fixture diagnoses flow conflicts',
+    filePath: path.join(repoRoot, 'examples', 'WebinarDemo', 'WebinarDemoContent', 'Stacklayoutframe.ui.qml'),
+    componentName: 'webinar-stacklayout-frame',
+    className: 'WebinarStacklayoutFrameComponent',
+    htmlContains: ['class="qml-stack-layout"'],
+    diagnosticsContains: ['QTQUICK_LAYOUTS_APPROXIMATE', 'LAYOUT_CONTAINER_CONFLICT']
+  },
+  {
+    label: 'webinar drawer fixture diagnoses QtQuick.Layouts sizing hints',
+    filePath: path.join(repoRoot, 'examples', 'WebinarDemo', 'WebinarDemoContent', 'Leftdrawer.ui.qml'),
+    componentName: 'webinar-leftdrawer',
+    className: 'WebinarLeftdrawerComponent',
+    diagnosticsContains: ['QTQUICK_LAYOUTS_APPROXIMATE', 'Layout.preferredWidth', 'Layout.preferredHeight']
   },
   {
     label: 'webinar popup keyframes are ignored',

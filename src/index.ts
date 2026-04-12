@@ -3,7 +3,13 @@ export { tokenizeQml, Token, TokenKind, SourceLocation as TokenSourceLocation } 
 export * from './lib/qml/parser';
 export * from './lib/naming';
 export * from './lib/schema/ui-schema';
-export * from './lib/diagnostics/formatter';
+export {
+  DiagnosticCounts,
+  countDiagnosticsBySeverity,
+  formatDiagnosticCounts,
+  formatDiagnostics,
+  hasStrictModeViolations
+} from './lib/diagnostics/formatter';
 export * from './lib/batch/batch-converter';
 export { LoweredExpression } from './lib/converter/expression-lowering';
 export { layoutToScss } from './lib/converter/layout-resolver';

@@ -1,4 +1,6 @@
 import { lowerBinding } from '../converter/expression-lowering';
+import { layoutToCssDeclarations } from '../converter/layout-resolver';
+import { isFlowLayoutContainer, suppressAbsolutePositioning } from '../layout/layout-utils';
 import { UiBinding, UiNode } from '../schema/ui-schema';
 import { DiagnosticsEmitter, RenderContext } from './renderer-contract';
 
@@ -13,7 +15,12 @@ type NodeStringListRule = readonly string[] | ((node: UiNode) => readonly string
 type NodeStringRule = string | ((node: UiNode) => string);
 type NodeCategoryRule = UiNodeMappingCategory | ((node: UiNode) => UiNodeMappingCategory);
 
-type NodeTemplateRenderer = (node: UiNode, context: RenderContext, diagnosticsEmitter: DiagnosticsEmitter) => string;
+type NodeTemplateRenderer = (
+  node: UiNode,
+  context: RenderContext,
+  diagnosticsEmitter: DiagnosticsEmitter,
+  parent?: UiNode
+) => string;
 
 interface UiNodeRenderRuleDefinition {
   templateRenderer: NodeTemplateRenderer;
@@ -81,6 +88,34 @@ function renderBoundAttribute(name: string, expression: string): string {
   return `[${name}]='${escapedExpression}'`;
 }
 
+function escapeHtmlAttribute(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function renderStyleAttribute(node: UiNode, parent: UiNode | undefined): string {
+  if (!node.layout) return '';
+  if (!parent) {
+    // Root layout is emitted on :host by the SCSS renderer to avoid duplicating host-level positioning.
+    return '';
+  }
+
+  const layout = isFlowLayoutContainer(parent)
+    ? suppressAbsolutePositioning(node.layout)
+    : node.layout;
+
+  const declarations = layoutToCssDeclarations(layout);
+  if (!declarations.length) {
+    return '';
+  }
+
+  return ` style="${escapeHtmlAttribute(declarations.join(' '))}"`;
+}
+
 function containerClassName(node: UiNode): string {
   if (node.meta?.role === 'window') return 'qml-window';
   if (node.meta?.role === 'structural') return 'qml-structural';
@@ -129,34 +164,34 @@ function renderEvents(node: UiNode, context: RenderContext): string {
   return renderedEvents.length > 0 ? ` ${renderedEvents.join(' ')}` : '';
 }
 
-function renderContainer(node: UiNode, context: RenderContext, diagnosticsEmitter: DiagnosticsEmitter): string {
+function renderContainer(node: UiNode, context: RenderContext, diagnosticsEmitter: DiagnosticsEmitter, parent?: UiNode): string {
   const className = containerClassName(node);
-  const content = node.children.map(child => renderNodeFromRegistry(child, context, diagnosticsEmitter)).filter(Boolean).join('\n');
-  return `<div class="${className}"${renderEvents(node, context)}>${content ? `\n${content}\n` : ''}</div>`;
+  const content = node.children.map(child => renderNodeFromRegistry(child, context, diagnosticsEmitter, node)).filter(Boolean).join('\n');
+  return `<div class="${className}"${renderStyleAttribute(node, parent)}${renderEvents(node, context)}>${content ? `\n${content}\n` : ''}</div>`;
 }
 
-function renderText(node: UiNode, context: RenderContext): string {
+function renderText(node: UiNode, context: RenderContext, _diagnosticsEmitter: DiagnosticsEmitter, parent?: UiNode): string {
   const textExpr = bindingLiteralOrExpr(node.text, 'text', context);
-  return `<span${renderEvents(node, context)}>{{ ${textExpr} }}</span>`;
+  return `<span${renderStyleAttribute(node, parent)}${renderEvents(node, context)}>{{ ${textExpr} }}</span>`;
 }
 
-function renderInput(node: UiNode, context: RenderContext): string {
+function renderInput(node: UiNode, context: RenderContext, _diagnosticsEmitter: DiagnosticsEmitter, parent?: UiNode): string {
   const placeholderExpr = bindingLiteralOrExpr(node.placeholder, 'placeholder', context);
   return [
-    `<mat-form-field appearance="outline"${renderEvents(node, context)}>`,
+    `<mat-form-field appearance="outline"${renderStyleAttribute(node, parent)}${renderEvents(node, context)}>`,
     `  <input matInput ${renderBoundAttribute('placeholder', placeholderExpr)}>`,
     '</mat-form-field>'
   ].join('\n');
 }
 
-function renderImage(node: UiNode, context: RenderContext): string {
+function renderImage(node: UiNode, context: RenderContext, _diagnosticsEmitter: DiagnosticsEmitter, parent?: UiNode): string {
   const sourceExpr = bindingLiteralOrExpr(node.source, 'imageSource', context);
-  return `<img class="qml-image"${renderEvents(node, context)} ${renderBoundAttribute('src', sourceExpr)}>`;
+  return `<img class="qml-image"${renderStyleAttribute(node, parent)}${renderEvents(node, context)} ${renderBoundAttribute('src', sourceExpr)}>`;
 }
 
-function renderButton(node: UiNode, context: RenderContext): string {
+function renderButton(node: UiNode, context: RenderContext, _diagnosticsEmitter: DiagnosticsEmitter, parent?: UiNode): string {
   const textExpr = bindingLiteralOrExpr(node.text, 'buttonText', context);
-  return `<button mat-raised-button${renderEvents(node, context)}>{{ ${textExpr} }}</button>`;
+  return `<button mat-raised-button${renderStyleAttribute(node, parent)}${renderEvents(node, context)}>{{ ${textExpr} }}</button>`;
 }
 
 function renderAnimation(node: UiNode): string {
@@ -257,8 +292,13 @@ export function getUiNodeRenderRule(node: UiNode): UiNodeRenderRule {
   };
 }
 
-export function renderNodeFromRegistry(node: UiNode, context: RenderContext, diagnosticsEmitter: DiagnosticsEmitter): string {
-  return getUiNodeRenderRule(node).templateRenderer(node, context, diagnosticsEmitter);
+export function renderNodeFromRegistry(
+  node: UiNode,
+  context: RenderContext,
+  diagnosticsEmitter: DiagnosticsEmitter,
+  parent?: UiNode
+): string {
+  return getUiNodeRenderRule(node).templateRenderer(node, context, diagnosticsEmitter, parent);
 }
 
 export function collectComponentImportsFromRegistry(root: UiNode): string[] {
