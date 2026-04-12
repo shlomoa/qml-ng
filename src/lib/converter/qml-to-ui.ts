@@ -1,54 +1,40 @@
 import { QmlDocument, QmlObjectNode, QmlProperty, QmlHandler } from '../qml/ast';
-import { lowerBinding } from './expression-lowering';
-import { isQmlHandlerName, mapQmlHandler } from './event-mapper';
-import { resolveLayout } from './layout-resolver';
 import { UiDocument, UiNode, UiDiagnostic, createDiagnostic, SourceRange } from '../schema/ui-schema';
+import {
+  PassContext,
+  PassPipeline,
+  StructuralNormalizationPass,
+  BindingLoweringPass,
+  HandlerLoweringPass,
+  LayoutLoweringPass,
+  ControlMappingPass,
+  DiagnosticsEnrichmentPass
+} from '../passes';
+import { resolveLayout } from './layout-resolver';
 
-// Unsupported QML types that should generate clear diagnostics
-const UNSUPPORTED_TYPES = new Set([
-  // State system
-  'State',
-  'StateGroup',
-  'PropertyChanges',
-  'Transition',
-  // Animations
-  'Timeline',
-  'KeyframeGroup',
-  'Keyframe',
-  'PropertyAnimation',
-  'NumberAnimation',
-  'ColorAnimation',
-  'RotationAnimation',
-  'Behavior',
-  // Graphics and effects
-  'SvgPathItem',
-  'ShaderEffect',
-  'FastBlur',
-  'Glow',
-  'InnerShadow',
-  'DropShadow',
-  'Canvas',
-  // Path elements (limited support)
-  'PathArc',
-  'PathLine',
-  'PathMove',
-  'PathSvg',
-  'PathText',
-  'PathQuad',
-  'PathCubic',
-  // Advanced interaction
-  'MultiPointTouchArea',
-  'PinchArea',
-  'DragHandler',
-  'TapHandler',
-  // Advanced layout
-  'Positioner',
-  // Model/View
-  'ListView',
-  'GridView',
-  'PathView',
-  'Repeater',
-]);
+/**
+ * Legacy function for backward compatibility.
+ * Use BindingLoweringPass.lowerBinding instead.
+ */
+export function lowerBinding(raw: string | number | boolean) {
+  return BindingLoweringPass.lowerBinding(raw);
+}
+
+/**
+ * Legacy function for backward compatibility.
+ * Use HandlerLoweringPass.isQmlHandlerName instead.
+ */
+export function isQmlHandlerName(name: string): boolean {
+  return HandlerLoweringPass.isQmlHandlerName(name);
+}
+
+/**
+ * Legacy function for backward compatibility.
+ * Use HandlerLoweringPass.mapQmlHandler instead.
+ */
+export function mapQmlHandler(name: string, handler: string) {
+  return HandlerLoweringPass.mapQmlHandler(name, handler);
+}
 
 function propertyMap(properties: QmlProperty[]): Map<string, QmlProperty> {
   return new Map(properties.map(p => [p.name, p]));
@@ -102,6 +88,14 @@ function handlersToEvents(handlers: QmlHandler[]) {
   });
 }
 
+/**
+ * Converts a QML object node to a UiNode using the multi-pass architecture.
+ *
+ * The conversion process:
+ * 1. Build initial UiNode structure from QML AST
+ * 2. Run through semantic lowering passes
+ * 3. Return fully processed UiNode
+ */
 export function qmlNodeToUi(
   node: QmlObjectNode,
   diagnostics: UiDiagnostic[],
@@ -111,189 +105,112 @@ export function qmlNodeToUi(
 
   // Combine property-based handlers and explicit handlers
   const propertyHandlers = node.properties
-    .filter(p => isQmlHandlerName(p.name))
-    .map(p => mapQmlHandler(p.name, qmlValueToHandler(p.value)));
+    .filter(p => HandlerLoweringPass.isQmlHandlerName(p.name))
+    .map(p => HandlerLoweringPass.mapQmlHandler(p.name, qmlValueToHandler(p.value)));
 
   const explicitHandlers = handlersToEvents(node.handlers);
   const events = [...propertyHandlers, ...explicitHandlers];
 
   const layout = resolveLayout(node.properties);
 
-  // Check if this is an unsupported type
-  if (UNSUPPORTED_TYPES.has(node.typeName)) {
-    diagnostics.push(
-      createDiagnostic(
-        'warning',
-        'unsupported',
-        `QML type '${node.typeName}' is not supported in qml-ng v1.0. This element will be skipped or rendered as a placeholder.`,
-        node.location,
-        filePath,
-        'UNSUPPORTED_TYPE'
-      )
-    );
-  }
+  // Build initial UiNode based on QML type
+  const initialNode = buildInitialNode(node, layout, events, diagnostics, filePath);
 
+  // Create pass context
+  const context: PassContext = {
+    diagnostics,
+    filePath
+  };
+
+  // Create and execute the lowering pipeline
+  const pipeline = new PassPipeline()
+    .add(new StructuralNormalizationPass())
+    .add(new BindingLoweringPass())
+    .add(new HandlerLoweringPass())
+    .add(new LayoutLoweringPass())
+    .add(new ControlMappingPass())
+    .add(new DiagnosticsEnrichmentPass());
+
+  return pipeline.execute(initialNode, context);
+}
+
+/**
+ * Builds the initial UiNode structure from QML AST before passes.
+ */
+function buildInitialNode(
+  node: QmlObjectNode,
+  layout: any,
+  events: any[],
+  diagnostics: UiDiagnostic[],
+  filePath?: string
+): UiNode {
+  const kind = StructuralNormalizationPass.classifyNodeKind(node.typeName);
+  const childNodes = children(collectChildObjects(node), diagnostics, filePath);
+
+  // Common properties for all nodes
+  const baseNode = {
+    kind,
+    name: node.typeName,
+    layout,
+    events,
+    children: childNodes,
+    location: node.location
+  };
+
+  // Add type-specific properties
   switch (node.typeName) {
     case 'Window':
-      return {
-        kind: 'container',
-        name: node.typeName,
-        layout,
-        events,
-        children: children(collectChildObjects(node), diagnostics, filePath),
-        meta: { role: 'window' },
-        location: node.location
-      };
-
     case 'QtObject':
     case 'Component':
-      return {
-        kind: 'container',
-        name: node.typeName,
-        layout,
-        events,
-        children: children(collectChildObjects(node), diagnostics, filePath),
-        meta: { role: 'structural' },
-        location: node.location
-      };
-
     case 'Item':
     case 'Rectangle':
-      return {
-        kind: 'container',
-        name: node.typeName,
-        layout,
-        events,
-        children: children(collectChildObjects(node), diagnostics, filePath),
-        meta: { role: 'group' },
-        location: node.location
-      };
-
     case 'Column':
     case 'ColumnLayout':
-      return {
-        kind: 'container',
-        name: node.typeName,
-        layout,
-        events,
-        children: children(collectChildObjects(node), diagnostics, filePath),
-        meta: { orientation: 'column', layoutKind: node.typeName === 'ColumnLayout' ? 'column-layout' : 'column' },
-        location: node.location
-      };
-
     case 'Row':
     case 'RowLayout':
-      return {
-        kind: 'container',
-        name: node.typeName,
-        layout,
-        events,
-        children: children(collectChildObjects(node), diagnostics, filePath),
-        meta: { orientation: 'row', layoutKind: node.typeName === 'RowLayout' ? 'row-layout' : 'row' },
-        location: node.location
-      };
-
     case 'StackLayout':
-      return {
-        kind: 'container',
-        name: 'StackLayout',
-        layout,
-        events,
-        children: children(collectChildObjects(node), diagnostics, filePath),
-        meta: { layoutKind: 'stack' },
-        location: node.location
-      };
-
     case 'GridLayout':
-      return {
-        kind: 'container',
-        name: 'GridLayout',
-        layout,
-        events,
-        children: children(collectChildObjects(node), diagnostics, filePath),
-        meta: { layoutKind: 'grid' },
-        location: node.location
-      };
-
     case 'FlexboxLayout':
-      return {
-        kind: 'container',
-        name: 'FlexboxLayout',
-        layout,
-        events,
-        children: children(collectChildObjects(node), diagnostics, filePath),
-        meta: { layoutKind: 'flexbox' },
-        location: node.location
-      };
-
     case 'ScrollView':
-      return {
-        kind: 'container',
-        name: 'ScrollView',
-        layout,
-        events,
-        children: children(collectChildObjects(node), diagnostics, filePath),
-        meta: { role: 'scroll-view' },
-        location: node.location
-      };
-
     case 'ShapePath':
-      diagnostics.push(
-        createDiagnostic(
-          'info',
-          'unsupported',
-          `ShapePath is partially supported. Complex path operations may not convert correctly.`,
-          node.location,
-          filePath,
-          'PARTIAL_SUPPORT'
-        )
-      );
       return {
-        kind: 'container',
-        name: 'ShapePath',
-        layout,
-        events,
-        children: children(collectChildObjects(node), diagnostics, filePath),
-        meta: { role: 'shape-path' },
-        location: node.location
+        ...baseNode,
+        meta: StructuralNormalizationPass.classifyContainerMeta(node.typeName)
       };
 
     case 'Text': {
       const raw = propertyText(node.properties, 'text') ?? '"TODO"';
       return {
-        kind: 'text',
-        name: 'Text',
+        ...baseNode,
         text: lowerBinding(raw).binding,
-        layout,
-        events,
-        children: [],
-        location: node.location
+        children: []
       };
     }
 
     case 'Image': {
       const raw = propertyText(node.properties, 'source') ?? '""';
       return {
-        kind: 'image',
-        name: 'Image',
+        ...baseNode,
         source: lowerBinding(raw).binding,
-        layout,
-        events,
-        children: [],
-        location: node.location
+        children: []
       };
     }
 
     case 'TextField': {
       const raw = propertyText(node.properties, 'placeholderText') ?? '""';
       return {
-        kind: 'input',
-        name: 'TextField',
+        ...baseNode,
         placeholder: lowerBinding(raw).binding,
-        layout,
-        events,
-        children: [],
-        location: node.location
+        children: []
+      };
+    }
+
+    case 'Button': {
+      const raw = propertyText(node.properties, 'text') ?? '"Button"';
+      return {
+        ...baseNode,
+        text: lowerBinding(raw).binding,
+        children: []
       };
     }
 
@@ -304,50 +221,22 @@ export function qmlNodeToUi(
     case 'PathSvg':
     case 'PathText':
       return {
-        kind: 'animation',
-        name: node.typeName,
-        events,
+        ...baseNode,
         children: [],
-        meta: { ignored: true },
-        location: node.location
+        meta: { ignored: true }
       };
-
-    case 'Button': {
-      const raw = propertyText(node.properties, 'text') ?? '"Button"';
-      return {
-        kind: 'button',
-        name: 'Button',
-        text: lowerBinding(raw).binding,
-        layout,
-        events,
-        children: [],
-        location: node.location
-      };
-    }
 
     default:
-      diagnostics.push(
-        createDiagnostic(
-          'warning',
-          'semantic',
-          `Unsupported QML type: ${node.typeName}. Converting as generic container.`,
-          node.location,
-          filePath,
-          'UNKNOWN_TYPE'
-        )
-      );
       return {
-        kind: 'unknown',
-        name: node.typeName,
-        layout,
-        events,
-        children: children(collectChildObjects(node), diagnostics, filePath),
-        meta: { unsupported: true },
-        location: node.location
+        ...baseNode,
+        meta: { unsupported: true }
       };
   }
 }
 
+/**
+ * Converts a QML document to a UiDocument.
+ */
 export function qmlToUiDocument(name: string, qml: QmlDocument, filePath?: string): UiDocument {
   const diagnostics: UiDiagnostic[] = [];
   return {
