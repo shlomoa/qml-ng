@@ -40,6 +40,8 @@ const LAYOUT_CONTAINER_RULES: Record<string, UiLayoutRule | undefined> = {
   }
 };
 
+const CSS_LENGTH_PATTERN = /^-?\d+(\.\d+)?(px|%|rem|em|vh|vw|vmin|vmax|ch|ex)$/i;
+
 function qmlValueToText(value: QmlValue | undefined): string | undefined {
   if (!value) return undefined;
 
@@ -133,26 +135,32 @@ function addSizeRule(
   value: string | undefined
 ): void {
   if (!value) return;
+  const cssLength = normalizeCssLength(value);
+
+  if (!cssLength) {
+    pushRule(rules, source, 'unsupported', `Value '${value}' cannot be lowered safely to a CSS length.`);
+    return;
+  }
 
   if (source === 'width') {
-    layout.width = value;
+    layout.width = cssLength;
     pushRule(rules, source, /^\d+(\.\d+)?$/.test(value) ? 'exact' : 'approximate', 'Mapped to CSS width.');
     return;
   }
 
   if (source === 'height') {
-    layout.height = value;
+    layout.height = cssLength;
     pushRule(rules, source, /^\d+(\.\d+)?$/.test(value) ? 'exact' : 'approximate', 'Mapped to CSS height.');
     return;
   }
 
   if (source === 'Layout.preferredWidth') {
-    layout.preferredWidth = value;
+    layout.preferredWidth = cssLength;
     pushRule(rules, source, 'approximate', 'Mapped to a best-effort CSS width hint.');
     return;
   }
 
-  layout.preferredHeight = value;
+  layout.preferredHeight = cssLength;
   pushRule(rules, source, 'approximate', 'Mapped to a best-effort CSS height hint.');
 }
 
@@ -169,15 +177,38 @@ function addLayoutPropertyRule(rules: UiLayoutRule[], property: QmlProperty): vo
   );
 }
 
-function toCssLength(value: string): string {
+function normalizeCssLength(value: string): string | undefined {
   const trimmed = value.trim();
-  if (!trimmed) return trimmed;
+  if (!trimmed) return undefined;
 
   if (/^-?\d+(\.\d+)?$/.test(trimmed)) {
     return `${trimmed}px`;
   }
 
-  return trimmed;
+  if (CSS_LENGTH_PATTERN.test(trimmed)) {
+    return trimmed;
+  }
+
+  return undefined;
+}
+
+function addAbsoluteOffsetRule(layout: UiLayout, rules: UiLayoutRule[], source: 'x' | 'y', value: string | undefined): void {
+  if (!value) return;
+  const cssLength = normalizeCssLength(value);
+
+  if (!cssLength) {
+    pushRule(rules, source, 'unsupported', `Value '${value}' cannot be lowered safely to absolute CSS positioning.`);
+    return;
+  }
+
+  if (source === 'x') {
+    layout.absoluteX = cssLength;
+    pushRule(rules, source, 'approximate', 'Mapped to CSS left with absolute positioning.');
+    return;
+  }
+
+  layout.absoluteY = cssLength;
+  pushRule(rules, source, 'approximate', 'Mapped to CSS top with absolute positioning.');
 }
 
 export function resolveLayout(typeName: string, properties: QmlProperty[]): UiLayout | undefined {
@@ -197,16 +228,8 @@ export function resolveLayout(typeName: string, properties: QmlProperty[]): UiLa
   addAnchorRule(layout, rules, 'anchors.top', qmlValueToText(map.get('anchors.top')?.value));
   addAnchorRule(layout, rules, 'anchors.bottom', qmlValueToText(map.get('anchors.bottom')?.value));
 
-  const x = qmlValueToText(map.get('x')?.value);
-  const y = qmlValueToText(map.get('y')?.value);
-  if (x) {
-    layout.absoluteX = x;
-    pushRule(rules, 'x', 'approximate', 'Mapped to CSS left with absolute positioning.');
-  }
-  if (y) {
-    layout.absoluteY = y;
-    pushRule(rules, 'y', 'approximate', 'Mapped to CSS top with absolute positioning.');
-  }
+  addAbsoluteOffsetRule(layout, rules, 'x', qmlValueToText(map.get('x')?.value));
+  addAbsoluteOffsetRule(layout, rules, 'y', qmlValueToText(map.get('y')?.value));
 
   addSizeRule(layout, rules, 'width', qmlValueToText(map.get('width')?.value));
   addSizeRule(layout, rules, 'height', qmlValueToText(map.get('height')?.value));
@@ -242,7 +265,7 @@ export function layoutToCssDeclarations(layout: UiLayout | undefined): string[] 
     if (layout.anchorLeftParent) {
       declarations.push('left: 0;');
     } else if (layout.absoluteX) {
-      declarations.push(`left: ${toCssLength(layout.absoluteX)};`);
+      declarations.push(`left: ${layout.absoluteX};`);
     }
 
     if (layout.anchorRightParent) {
@@ -252,7 +275,7 @@ export function layoutToCssDeclarations(layout: UiLayout | undefined): string[] 
     if (layout.anchorTopParent) {
       declarations.push('top: 0;');
     } else if (layout.absoluteY) {
-      declarations.push(`top: ${toCssLength(layout.absoluteY)};`);
+      declarations.push(`top: ${layout.absoluteY};`);
     }
 
     if (layout.anchorBottomParent) {
@@ -261,15 +284,15 @@ export function layoutToCssDeclarations(layout: UiLayout | undefined): string[] 
   }
 
   if (layout.width) {
-    declarations.push(`width: ${toCssLength(layout.width)};`);
+    declarations.push(`width: ${layout.width};`);
   } else if (layout.preferredWidth) {
-    declarations.push(`width: ${toCssLength(layout.preferredWidth)};`);
+    declarations.push(`width: ${layout.preferredWidth};`);
   }
 
   if (layout.height) {
-    declarations.push(`height: ${toCssLength(layout.height)};`);
+    declarations.push(`height: ${layout.height};`);
   } else if (layout.preferredHeight) {
-    declarations.push(`height: ${toCssLength(layout.preferredHeight)};`);
+    declarations.push(`height: ${layout.preferredHeight};`);
   }
 
   return declarations;

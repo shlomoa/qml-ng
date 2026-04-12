@@ -36,3 +36,17 @@ export function hasHorizontalAbsoluteConflict(layout: UiLayout): boolean {
 export function hasVerticalAbsoluteConflict(layout: UiLayout): boolean {
   return Boolean(layout.fillParent || layout.centerInParent || layout.anchorTopParent || layout.anchorBottomParent);
 }
+
+export function suppressAbsolutePositioning(layout: UiLayout): UiLayout {
+  return {
+    ...layout,
+    fillParent: false,
+    centerInParent: false,
+    anchorLeftParent: false,
+    anchorRightParent: false,
+    anchorTopParent: false,
+    anchorBottomParent: false,
+    absoluteX: undefined,
+    absoluteY: undefined
+  };
+}

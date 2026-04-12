@@ -202,7 +202,7 @@ function diagnoseQtQuickLayoutsImport(
     return;
   }
 
-  const layoutTypes = [...collectLayoutTypeNames(root)].sort((a, b) => a.localeCompare(b));
+  const layoutTypes = Array.from(collectLayoutTypeNames(root)).sort((a, b) => a.localeCompare(b));
   if (layoutTypes.length === 0) {
     diagnostics.push(
       createDiagnostic(

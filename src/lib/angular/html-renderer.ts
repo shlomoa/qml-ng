@@ -1,6 +1,6 @@
 import { lowerBinding } from '../converter/expression-lowering';
 import { layoutToCssDeclarations } from '../converter/layout-resolver';
-import { isFlowLayoutContainer } from '../layout/layout-utils';
+import { isFlowLayoutContainer, suppressAbsolutePositioning } from '../layout/layout-utils';
 import { UiBinding, UiEvent, UiNode } from '../schema/ui-schema';
 import { DiagnosticsEmitter, HtmlRenderer, RenderContext } from './renderer-contract';
 
@@ -53,7 +53,10 @@ function renderBoundAttribute(name: string, expression: string): string {
 function escapeHtmlAttribute(value: string): string {
   return value
     .replace(/&/g, '&amp;')
-    .replace(/"/g, '&quot;');
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
 
 function renderStyleAttribute(node: UiNode, parent: UiNode | undefined): string {
@@ -64,17 +67,7 @@ function renderStyleAttribute(node: UiNode, parent: UiNode | undefined): string 
   }
 
   const layout = isFlowLayoutContainer(parent)
-    ? {
-        ...node.layout,
-        fillParent: false,
-        centerInParent: false,
-        anchorLeftParent: false,
-        anchorRightParent: false,
-        anchorTopParent: false,
-        anchorBottomParent: false,
-        absoluteX: undefined,
-        absoluteY: undefined
-      }
+    ? suppressAbsolutePositioning(node.layout)
     : node.layout;
 
   const declarations = layoutToCssDeclarations(layout);
