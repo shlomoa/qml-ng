@@ -75,6 +75,8 @@ function qmlTypeToTs(qmlType: string): string {
 
 /**
  * Converts a QmlValue to a TypeScript/Angular initial value expression string.
+ * For identifier values (property references), the value is lowered as an
+ * expression so that signal reads are written correctly (e.g. `otherProp()`).
  */
 function qmlValueToInitializer(value: QmlProperty['value']): string {
   switch (value.kind) {
@@ -86,7 +88,9 @@ function qmlValueToInitializer(value: QmlProperty['value']): string {
       if (value.value === 'true' || value.value === 'false') {
         return value.value;
       }
-      return 'undefined';
+      // Treat bare identifier as an expression — the lowering will rewrite it as
+      // a signal read (e.g. `otherProp()`), which is the correct QML semantics.
+      return lowerBindingAst(value.value).angularExpression;
     case 'expression':
     case 'binding':
       return lowerBindingAst(value.kind === 'binding' ? value.expression : value.value).angularExpression;
@@ -112,8 +116,13 @@ function extractStateDeclarations(properties: QmlProperty[]): UiStateDeclaration
     if (prop.name.startsWith('on') || prop.embeddedObject) {
       continue;
     }
-    // Skip complex / unsupported type references (type names that start with uppercase
-    // are component/object types, not primitive types)
+    // Skip complex / unsupported type references.
+    // QML primitive types ('int', 'real', 'string', 'bool', 'url', 'color', 'var') are
+    // all lowercase; component/object types (e.g. 'Window', 'MyButton') start with an
+    // uppercase letter and require full component-resolution support which is out of scope
+    // for v1.0 signal lowering.  Using the capitalisation convention is a reliable
+    // heuristic for all standard QML types; any unusual custom types that are lowercase
+    // will fall through to 'any'.
     const typeName = prop.typeName ?? '';
     if (typeName && /^[A-Z]/.test(typeName)) {
       continue;

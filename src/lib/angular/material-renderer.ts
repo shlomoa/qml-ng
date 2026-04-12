@@ -25,8 +25,12 @@ function bindingLiteralOrExpr(binding: UiBinding | undefined, fieldPrefix: strin
     return JSON.stringify(binding.value ?? '');
   }
 
-  // Re-lower via the AST path to get correct dependency extraction
-  // (the binding's own .dependencies may have been set by regex-based extraction).
+  // Re-lower the expression through the full AST path here rather than relying on
+  // `binding.dependencies` because the initial binding may have been built before
+  // the AST-based pipeline was unified — regex-based extraction (used in
+  // BindingLoweringPass.ensureProperBinding) does not respect string quote contexts
+  // and would incorrectly include string literal content (e.g. "Reset", "Start")
+  // as signal dependencies.  Re-lowering is cheap and guarantees correct deps.
   const lowered = lowerBinding(binding.expression ?? '');
   lowered.binding.dependencies.forEach(d => ctx.dependencyNames.add(d));
   const fieldName = `${fieldPrefix}Expr${++ctx.exprCounter}`;
